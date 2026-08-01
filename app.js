@@ -118,24 +118,63 @@ $('#deleteAssignmentBtn').onclick=async()=>{const id=$('#assignmentId').value;if
 $('#generateAllBtn').onclick=async()=>{const m=$('#assignmentMonth').value||monthNow();for(const a of assignments.filter(x=>x.status==='active'))await generateAssignmentShifts(a,m);alert('Escalas geradas/atualizadas para o mês selecionado.');loadAll()};
 
 function monthBounds(month){
-  const [y,m]=month.split('-').map(Number),start=new Date(y,m-1,1),end=new Date(y,m,0);return{start,end}
+  const [year,monthNumber]=month.split('-').map(Number);
+  return{
+    start:new Date(year,monthNumber-1,1,12,0,0,0),
+    end:new Date(year,monthNumber,0,12,0,0,0)
+  };
 }
-function iso(d){return d.toISOString().slice(0,10)}
+function iso(d){
+  const year=d.getFullYear();
+  const month=String(d.getMonth()+1).padStart(2,'0');
+  const day=String(d.getDate()).padStart(2,'0');
+  return `${year}-${month}-${day}`;
+}
+function calendarDayNumber(value){
+  if(value instanceof Date){
+    return Date.UTC(value.getFullYear(),value.getMonth(),value.getDate())/86400000;
+  }
+  const [year,month,day]=String(value).split('-').map(Number);
+  return Date.UTC(year,month-1,day)/86400000;
+}
 function shouldGenerate(a,d){
-  const start=new Date(a.start_date+'T12:00:00'),end=a.end_date?new Date(a.end_date+'T12:00:00'):null;
-  if(d<start||(end&&d>end))return false;
+  const currentDay=calendarDayNumber(d);
+  const startDay=calendarDayNumber(a.start_date);
+  const endDay=a.end_date?calendarDayNumber(a.end_date):null;
+
+  if(currentDay<startDay||(endDay!==null&&currentDay>endDay))return false;
   if(a.schedule_type==='daily')return true;
   if(a.schedule_type==='weekdays')return (a.weekdays||[]).includes(d.getDay());
-  if(a.schedule_type==='12x36'){const diff=Math.round((d-start)/(1000*60*60*24));return diff>=0&&diff%2===0}
+  if(a.schedule_type==='12x36'){
+    const diff=currentDay-startDay;
+    return diff>=0&&diff%2===0;
+  }
   return false;
 }
 async function generateAssignmentShifts(a,month){
   const {start,end}=monthBounds(month),rows=[];
   for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
-    if(shouldGenerate(a,d))rows.push({assignment_id:a.id,shift_date:iso(d),house_id:a.house_id,planned_caregiver_id:a.caregiver_id,actual_caregiver_id:a.caregiver_id,turn:a.turn,shift_type:'normal',amount:a.amount,status:'planned',created_by:user.id,updated_at:new Date().toISOString()});
+    if(shouldGenerate(a,d)){
+      rows.push({
+        assignment_id:a.id,
+        shift_date:iso(d),
+        house_id:a.house_id,
+        planned_caregiver_id:a.caregiver_id,
+        actual_caregiver_id:a.caregiver_id,
+        turn:a.turn,
+        shift_type:'normal',
+        amount:a.amount,
+        status:'planned',
+        created_by:user.id,
+        updated_at:new Date().toISOString()
+      });
+    }
   }
   if(!rows.length)return;
-  const r=await db.from('shifts').upsert(rows,{onConflict:'assignment_id,shift_date,turn',ignoreDuplicates:true});
+  const r=await db.from('shifts').upsert(rows,{
+    onConflict:'assignment_id,shift_date,turn',
+    ignoreDuplicates:true
+  });
   if(r.error)alert('Erro ao gerar escala: '+r.error.message);
 }
 
