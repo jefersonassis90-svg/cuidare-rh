@@ -6,6 +6,8 @@
   <title>Cuidare RH</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <style>
     :root{
       --bg:#f4f7fb;--panel:#fff;--text:#17233c;--muted:#6f7f98;
@@ -73,6 +75,7 @@
       <button data-view="houses">Casas e escalas</button>
       <button data-view="supports">Suportes</button>
       <button data-view="closing">Fechamento</button>
+      <button data-view="receipts">Recibos</button>
     </nav>
     <div class="side-bottom"><button id="logoutBtn" class="btn">Sair</button></div>
   </aside>
@@ -129,7 +132,26 @@
 
     <section id="closingView" class="view">
       <div class="toolbar"><input id="closingMonth" class="field" type="month" style="max-width:190px"><button id="refreshClosingBtn" class="btn">Atualizar</button></div>
-      <div class="table-wrap"><table><thead><tr><th>Cuidador</th><th>Diurnos</th><th>Noturnos</th><th>24h</th><th>Suportes</th><th>Plantões considerados</th><th>Total</th></tr></thead><tbody id="closingBody"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Cuidador</th><th>Plantões 12h</th><th>Plantões 24h</th><th>Plantões considerados</th><th>Total</th><th>Recibo</th></tr></thead><tbody id="closingBody"></tbody></table></div>
+    </section>
+
+    <section id="receiptsView" class="view">
+      <div class="toolbar">
+        <div class="toolbar-group">
+          <input id="receiptMonth" class="field" type="month" style="max-width:190px">
+          <input id="receiptPaymentDate" class="field" type="date" style="max-width:190px" title="Data do pagamento">
+        </div>
+        <button id="generateAllReceiptsBtn" class="btn primary">Gerar todos os recibos</button>
+      </div>
+      <div class="info-box" style="margin-bottom:14px">
+        O recibo mostra somente plantões de 12h e 24h. Substituições por suporte são contabilizadas para quem realizou o plantão, mas não aparecem como categoria separada.
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Cuidador</th><th>CPF/CNPJ</th><th>Plantões 12h</th><th>Plantões 24h</th><th>Total</th><th></th></tr></thead>
+          <tbody id="receiptsBody"></tbody>
+        </table>
+      </div>
     </section>
   </main>
 </div>

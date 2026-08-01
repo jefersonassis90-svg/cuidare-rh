@@ -36,7 +36,7 @@ async function loadAll(){
 function setView(v){
   view=v;$$('.view').forEach(x=>x.classList.remove('active'));$('#'+v+'View').classList.add('active');
   $$('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.view===v));
-  $('#pageTitle').textContent={dashboard:'Dashboard',caregivers:'Cuidadores',houses:'Casas e escalas',supports:'Suportes',closing:'Fechamento mensal'}[v];
+  $('#pageTitle').textContent={dashboard:'Dashboard',caregivers:'Cuidadores',houses:'Casas e escalas',supports:'Suportes',closing:'Fechamento mensal',receipts:'Recibos'}[v];
   render();
 }
 $$('.nav button').forEach(b=>b.onclick=()=>setView(b.dataset.view));
@@ -51,7 +51,7 @@ function render(){
   $('#todayShifts').innerHTML=todays.length?todays.map(x=>`<p><strong>${houseName(x.house_id)}</strong> — previsto: ${caregiverName(x.planned_caregiver_id)}${x.shift_type==='support'?` · suporte: ${caregiverName(x.actual_caregiver_id)}`:''} (${labelTurn(x.turn)})</p>`).join(''):'<div class="empty">Nenhuma escala gerada para hoje.</div>';
   const monthShifts=shifts.filter(x=>x.shift_date.startsWith(month));
   $('#monthSummary').innerHTML=`<p>Plantões previstos: <strong>${monthShifts.length}</strong></p><p>Substituições por suporte: <strong>${monthSupports.length}</strong></p><p>Folha estimada até hoje: <strong>${money(calculateClosing(month).reduce((a,b)=>a+b.total,0))}</strong></p>`;
-  renderCaregivers();renderHouses();renderAssignments();renderSupports();renderClosing();
+  renderCaregivers();renderHouses();renderAssignments();renderSupports();renderClosing();renderReceipts();
 }
 
 function renderCaregivers(){
@@ -171,17 +171,131 @@ function calculateClosing(month){
   const map={};
   for(const s of list){
     const id=s.actual_caregiver_id;if(!id)continue;
-    if(!map[id])map[id]={caregiverId:id,day:0,night:0,h24:0,support:0,count:0,total:0};
-    if(s.turn==='day')map[id].day++;if(s.turn==='night')map[id].night++;if(s.turn==='24h')map[id].h24++;
-    if(s.shift_type==='support')map[id].support++;map[id].count++;map[id].total+=Number(s.amount||0);
+    if(!map[id])map[id]={caregiverId:id,h12:0,h24:0,count:0,total:0,houses:{}};
+    const houseId=s.house_id;
+    if(!map[id].houses[houseId])map[id].houses[houseId]={houseId,h12:0,h24:0,total:0};
+    if(s.turn==='24h'){
+      map[id].h24++;
+      map[id].houses[houseId].h24++;
+    }else{
+      map[id].h12++;
+      map[id].houses[houseId].h12++;
+    }
+    map[id].count++;
+    map[id].total+=Number(s.amount||0);
+    map[id].houses[houseId].total+=Number(s.amount||0);
   }
   return Object.values(map);
 }
 function renderClosing(){
-  const rows=calculateClosing($('#closingMonth').value||monthNow());
-  $('#closingBody').innerHTML=rows.length?rows.map(x=>`<tr><td>${caregiverName(x.caregiverId)}</td><td>${x.day}</td><td>${x.night}</td><td>${x.h24}</td><td>${x.support}</td><td>${x.count}</td><td><strong>${money(x.total)}</strong></td></tr>`).join(''):'<tr><td colspan="7" class="empty">Nenhum plantão considerado no período.</td></tr>';
+  const month=$('#closingMonth').value||monthNow();
+  const rows=calculateClosing(month);
+  $('#closingBody').innerHTML=rows.length?rows.map(x=>`<tr>
+    <td>${caregiverName(x.caregiverId)}</td>
+    <td>${x.h12}</td>
+    <td>${x.h24}</td>
+    <td>${x.count}</td>
+    <td><strong>${money(x.total)}</strong></td>
+    <td><button class="btn small" onclick="generateReceipt('${x.caregiverId}','${month}')">Gerar recibo</button></td>
+  </tr>`).join(''):'<tr><td colspan="6" class="empty">Nenhum plantão considerado no período.</td></tr>';
 }
-$('#closingMonth').value=monthNow();$('#closingMonth').onchange=renderClosing;$('#refreshClosingBtn').onclick=renderClosing;
+$('#closingMonth').value=monthNow();$('#closingMonth').onchange=()=>{renderClosing();$('#receiptMonth').value=$('#closingMonth').value;renderReceipts()};$('#refreshClosingBtn').onclick=renderClosing;
+
+function monthPeriod(month){
+  const [year,monthNumber]=month.split('-').map(Number);
+  const lastDay=new Date(year,monthNumber,0).getDate();
+  return{
+    start:`01/${String(monthNumber).padStart(2,'0')}/${year}`,
+    end:`${String(lastDay).padStart(2,'0')}/${String(monthNumber).padStart(2,'0')}/${year}`,
+    label:new Date(year,monthNumber-1,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'})
+  };
+}
+function receiptDocument(caregiverId,month,doc=null,addPage=false){
+  const row=calculateClosing(month).find(x=>x.caregiverId===caregiverId);
+  const caregiver=caregivers.find(x=>x.id===caregiverId);
+  if(!row||!caregiver)throw new Error('Não há fechamento para este cuidador no período.');
+  const {jsPDF}=window.jspdf;
+  const pdf=doc||new jsPDF();
+  if(addPage)pdf.addPage();
+
+  const period=monthPeriod(month);
+  const paymentDate=$('#receiptPaymentDate').value?dateBR($('#receiptPaymentDate').value):'____/____/________';
+  const documentNumber=caregiver.has_mei&&caregiver.cnpj?caregiver.cnpj:(caregiver.cpf||'Não informado');
+  const documentLabel=caregiver.has_mei&&caregiver.cnpj?'CNPJ':'CPF';
+
+  pdf.setFont('helvetica','bold');
+  pdf.setFontSize(16);
+  pdf.text('RECIBO DE PRESTAÇÃO DE SERVIÇOS',105,20,{align:'center'});
+  pdf.setFont('helvetica','normal');
+  pdf.setFontSize(11);
+
+  const intro=`Recebi da Cuidare Home Care a importância de ${money(row.total)}, referente aos serviços prestados no período de ${period.start} a ${period.end}.`;
+  const lines=pdf.splitTextToSize(intro,175);
+  pdf.text(lines,18,35);
+
+  const houseRows=Object.values(row.houses)
+    .sort((a,b)=>houseName(a.houseId).localeCompare(houseName(b.houseId)))
+    .map(h=>[houseName(h.houseId),String(h.h12),String(h.h24),money(h.total)]);
+
+  pdf.autoTable({
+    startY:35+(lines.length*6)+8,
+    head:[['Casa','Plantões 12h','Plantões 24h','Valor']],
+    body:houseRows,
+    foot:[['TOTAL',String(row.h12),String(row.h24),money(row.total)]],
+    theme:'grid',
+    styles:{fontSize:10,cellPadding:3},
+    headStyles:{fillColor:[37,99,235]},
+    footStyles:{fillColor:[219,234,254],textColor:[23,35,60],fontStyle:'bold'}
+  });
+
+  let y=pdf.lastAutoTable.finalY+14;
+  pdf.setFont('helvetica','bold');
+  pdf.text(`Plantões de 12 horas: ${row.h12}`,18,y);
+  pdf.text(`Plantões de 24 horas: ${row.h24}`,18,y+7);
+  pdf.text(`Valor total: ${money(row.total)}`,18,y+14);
+
+  pdf.setFont('helvetica','normal');
+  pdf.text(`Prestador(a): ${caregiver.name}`,18,y+28);
+  pdf.text(`${documentLabel}: ${documentNumber}`,18,y+35);
+  if(caregiver.pix_key)pdf.text(`PIX: ${caregiver.pix_key}`,18,y+42);
+  pdf.text(`Data do pagamento: ${paymentDate}`,18,y+49);
+
+  pdf.line(45,y+78,165,y+78);
+  pdf.text(caregiver.name,105,y+85,{align:'center'});
+  pdf.text(`${documentLabel}: ${documentNumber}`,105,y+91,{align:'center'});
+
+  return pdf;
+}
+window.generateReceipt=(caregiverId,month)=>{
+  try{
+    const pdf=receiptDocument(caregiverId,month);
+    const caregiver=caregivers.find(x=>x.id===caregiverId);
+    pdf.save(`Recibo_${caregiver.name.replace(/[^\wÀ-ÿ]+/g,'_')}_${month}.pdf`);
+  }catch(error){alert(error.message)}
+};
+function renderReceipts(){
+  const month=$('#receiptMonth').value||monthNow();
+  const rows=calculateClosing(month);
+  $('#receiptsBody').innerHTML=rows.length?rows.map(x=>{
+    const c=caregivers.find(a=>a.id===x.caregiverId);
+    const doc=c?.has_mei&&c?.cnpj?c.cnpj:(c?.cpf||'');
+    return`<tr><td>${caregiverName(x.caregiverId)}</td><td>${doc}</td><td>${x.h12}</td><td>${x.h24}</td><td><strong>${money(x.total)}</strong></td><td><button class="btn small" onclick="generateReceipt('${x.caregiverId}','${month}')">Baixar PDF</button></td></tr>`;
+  }).join(''):'<tr><td colspan="6" class="empty">Nenhum recibo disponível no período.</td></tr>';
+}
+$('#receiptMonth').value=monthNow();
+$('#receiptPaymentDate').value=todayISO();
+$('#receiptMonth').onchange=renderReceipts;
+$('#generateAllReceiptsBtn').onclick=()=>{
+  const month=$('#receiptMonth').value||monthNow();
+  const rows=calculateClosing(month);
+  if(!rows.length)return alert('Não há recibos para gerar neste período.');
+  try{
+    let pdf=null;
+    rows.forEach((row,index)=>{pdf=receiptDocument(row.caregiverId,month,pdf,index>0)});
+    pdf.save(`Recibos_Cuidare_${month}.pdf`);
+  }catch(error){alert(error.message)}
+};
+
 
 $('#loginForm').onsubmit=async e=>{e.preventDefault();$('#loginMsg').textContent='Entrando...';const{error}=await db.auth.signInWithPassword({email:$('#loginEmail').value.trim(),password:$('#loginPassword').value});$('#loginMsg').textContent=error?error.message:''};
 $('#logoutBtn').onclick=()=>db.auth.signOut();
