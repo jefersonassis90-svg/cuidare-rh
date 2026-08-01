@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cuidare RH</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <style>
+    :root{
+      --bg:#f4f7fb;--panel:#fff;--text:#17233c;--muted:#6f7f98;
+      --primary:#2563eb;--primary-soft:#dbeafe;--border:#dce6f5;
+      --danger:#c24141;--ok:#23845e;--warning:#c7831d;--shadow:0 12px 30px rgba(23,35,60,.08);
+    }
+    *{box-sizing:border-box}body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--text)}
+    button,input,select,textarea{font:inherit}.hidden{display:none!important}
+    .auth{min-height:100vh;display:grid;place-items:center;padding:24px;background:linear-gradient(135deg,#eff6ff,#dbeafe)}
+    .auth-card{width:min(420px,100%);background:var(--panel);padding:28px;border-radius:22px;box-shadow:var(--shadow)}
+    .logo{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#2563eb,#60a5fa);display:grid;place-items:center;color:#fff;font-size:26px;margin-bottom:16px}
+    .field{width:100%;border:1px solid var(--border);border-radius:12px;padding:11px 12px;background:var(--panel);color:var(--text)}
+    .form-group{display:grid;gap:6px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.full{grid-column:1/-1}
+    label{font-size:13px;color:var(--muted)}.btn{border:1px solid var(--border);background:var(--panel);color:var(--text);padding:10px 14px;border-radius:12px;cursor:pointer}
+    .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}.btn.danger{color:var(--danger)}
+    .app{display:grid;grid-template-columns:245px 1fr;min-height:100vh}.sidebar{background:#13213d;color:#fff;padding:22px 16px}
+    .brand{display:flex;gap:10px;align-items:center;margin-bottom:26px}.brand .logo{width:42px;height:42px;margin:0;border-radius:13px}
+    .brand h1{font-size:18px;margin:0}.brand small{color:#a9bad6}.nav{display:grid;gap:7px}
+    .nav button{border:0;background:transparent;color:#c9d6eb;padding:12px;border-radius:10px;text-align:left;cursor:pointer}
+    .nav button.active,.nav button:hover{background:#24385f;color:#fff}.side-bottom{margin-top:26px;display:grid;gap:9px}
+    .main{padding:26px}.topbar{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:20px}
+    .topbar h2{margin:0}.muted{color:var(--muted)}.actions{display:flex;gap:9px;flex-wrap:wrap}
+    .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.card{background:var(--panel);border:1px solid var(--border);border-radius:17px;padding:17px;box-shadow:var(--shadow)}
+    .card .number{font-size:27px;font-weight:700;margin-top:6px}.view{display:none}.view.active{display:block}
+    .toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+    .search{min-width:260px}.table-wrap{overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}
+    table{width:100%;border-collapse:collapse;min-width:780px}th,td{text-align:left;padding:12px;border-bottom:1px solid var(--border);font-size:14px}
+    th{background:#f8fbff;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}.badge{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:12px;background:var(--primary-soft);color:var(--primary)}
+    .badge.ok{background:#dcfce7;color:#166534}.badge.warn{background:#fef3c7;color:#92400e}.badge.danger{background:#fee2e2;color:#991b1b}
+    .empty{padding:34px;text-align:center;color:var(--muted)}.modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}
+    .modal.open{display:flex}.modal-card{width:min(760px,100%);max-height:92vh;overflow:auto;background:var(--panel);padding:22px;border-radius:20px}
+    .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}.modal-head h3{margin:0}.modal-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}
+    .summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.summary-box{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px}
+    @media(max-width:950px){.app{grid-template-columns:1fr}.sidebar{position:static}.nav{grid-template-columns:repeat(5,minmax(max-content,1fr));overflow:auto}.cards{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:650px){.main{padding:15px}.cards{grid-template-columns:1fr 1fr}.form-grid{grid-template-columns:1fr}.full{grid-column:auto}.summary-grid{grid-template-columns:1fr}.topbar{align-items:flex-start;flex-direction:column}}
+  </style>
+</head>
+<body>
+<section id="authScreen" class="auth">
+  <div class="auth-card">
+    <div class="logo">RH</div>
+    <h1 style="margin:0 0 6px">Cuidare RH</h1>
+    <p class="muted">Gestão de cuidadores, casas, plantões e fechamentos.</p>
+    <form id="loginForm" style="display:grid;gap:13px">
+      <div class="form-group"><label>E-mail</label><input id="loginEmail" class="field" type="email" required></div>
+      <div class="form-group"><label>Senha</label><input id="loginPassword" class="field" type="password" required></div>
+      <button class="btn primary">Entrar</button>
+      <div id="loginMsg" class="muted"></div>
+    </form>
+  </div>
+</section>
+
+<div id="appRoot" class="app hidden">
+  <aside class="sidebar">
+    <div class="brand"><div class="logo">RH</div><div><h1>Cuidare RH</h1><small>Gestão operacional</small></div></div>
+    <nav class="nav">
+      <button class="active" data-view="dashboard">Dashboard</button>
+      <button data-view="caregivers">Cuidadores</button>
+      <button data-view="houses">Casas</button>
+      <button data-view="shifts">Plantões</button>
+      <button data-view="closing">Fechamento</button>
+    </nav>
+    <div class="side-bottom"><button id="logoutBtn" class="btn">Sair</button></div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar"><div><h2 id="pageTitle">Dashboard</h2><div id="pageSubtitle" class="muted"></div></div><div class="actions"><span id="syncState" class="muted">Conectando...</span></div></div>
+
+    <section id="dashboardView" class="view active">
+      <div class="cards">
+        <div class="card"><div class="muted">Cuidadores ativos</div><div id="dashCaregivers" class="number">0</div></div>
+        <div class="card"><div class="muted">Cuidadores de suporte</div><div id="dashSupport" class="number">0</div></div>
+        <div class="card"><div class="muted">Casas ativas</div><div id="dashHouses" class="number">0</div></div>
+        <div class="card"><div class="muted">Plantões no mês</div><div id="dashShifts" class="number">0</div></div>
+      </div>
+      <div class="summary-grid">
+        <div class="summary-box"><h3>Plantões de hoje</h3><div id="todayShifts"></div></div>
+        <div class="summary-box"><h3>Resumo do mês</h3><div id="monthSummary"></div></div>
+      </div>
+    </section>
+
+    <section id="caregiversView" class="view">
+      <div class="toolbar"><input id="caregiverSearch" class="field search" placeholder="Buscar cuidador..."><button id="newCaregiverBtn" class="btn primary">+ Novo cuidador</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Nome</th><th>CPF</th><th>Tipo</th><th>Telefone</th><th>PIX</th><th>MEI</th><th>Status</th><th></th></tr></thead><tbody id="caregiversBody"></tbody></table></div>
+    </section>
+
+    <section id="housesView" class="view">
+      <div class="toolbar"><input id="houseSearch" class="field search" placeholder="Buscar casa..."><button id="newHouseBtn" class="btn primary">+ Nova casa</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Casa</th><th>Código</th><th>Responsável</th><th>Telefone</th><th>Cobertura</th><th>Status</th><th></th></tr></thead><tbody id="housesBody"></tbody></table></div>
+    </section>
+
+    <section id="shiftsView" class="view">
+      <div class="toolbar">
+        <input id="shiftMonth" class="field" type="month" style="max-width:190px">
+        <button id="newShiftBtn" class="btn primary">+ Novo plantão</button>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>Data</th><th>Casa</th><th>Previsto</th><th>Realizado por</th><th>Turno</th><th>Tipo</th><th>Valor</th><th>Status</th><th></th></tr></thead><tbody id="shiftsBody"></tbody></table></div>
+    </section>
+
+    <section id="closingView" class="view">
+      <div class="toolbar"><input id="closingMonth" class="field" type="month" style="max-width:190px"><button id="refreshClosingBtn" class="btn">Atualizar</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Cuidador</th><th>Diurnos</th><th>Noturnos</th><th>24h</th><th>Suporte</th><th>Extras</th><th>Total</th></tr></thead><tbody id="closingBody"></tbody></table></div>
+    </section>
+  </main>
+</div>
+
+<div id="caregiverModal" class="modal"><div class="modal-card">
+  <div class="modal-head"><h3>Cuidador</h3><button class="btn" data-close="caregiverModal">✕</button></div>
+  <form id="caregiverForm"><input id="caregiverId" type="hidden"><div class="form-grid">
+    <div class="form-group full"><label>Nome completo</label><input id="cgName" class="field" required></div>
+    <div class="form-group"><label>CPF</label><input id="cgCpf" class="field"></div>
+    <div class="form-group"><label>Telefone</label><input id="cgPhone" class="field"></div>
+    <div class="form-group"><label>Tipo de atuação</label><select id="cgType" class="field"><option value="fixed">Fixo</option><option value="support">Suporte</option><option value="both">Fixo e suporte</option></select></div>
+    <div class="form-group"><label>Função</label><input id="cgRole" class="field" placeholder="Cuidador, técnico..."></div>
+    <div class="form-group"><label>Chave PIX</label><input id="cgPix" class="field"></div>
+    <div class="form-group"><label>Possui MEI?</label><select id="cgMei" class="field"><option value="false">Não</option><option value="true">Sim</option></select></div>
+    <div class="form-group"><label>CNPJ</label><input id="cgCnpj" class="field"></div>
+    <div class="form-group"><label>Status</label><select id="cgStatus" class="field"><option value="active">Ativo</option><option value="away">Afastado</option><option value="inactive">Inativo</option></select></div>
+    <div class="form-group full"><label>Observações</label><textarea id="cgNotes" class="field"></textarea></div>
+  </div><div class="modal-actions"><button type="button" id="deleteCaregiverBtn" class="btn danger">Excluir</button><button class="btn primary">Salvar</button></div></form>
+</div></div>
+
+<div id="houseModal" class="modal"><div class="modal-card">
+  <div class="modal-head"><h3>Casa</h3><button class="btn" data-close="houseModal">✕</button></div>
+  <form id="houseForm"><input id="houseId" type="hidden"><div class="form-grid">
+    <div class="form-group full"><label>Nome ou identificação</label><input id="hsName" class="field" required></div>
+    <div class="form-group"><label>Código interno</label><input id="hsCode" class="field"></div>
+    <div class="form-group"><label>Responsável</label><input id="hsResponsible" class="field"></div>
+    <div class="form-group"><label>Telefone</label><input id="hsPhone" class="field"></div>
+    <div class="form-group"><label>Tipo de cobertura</label><select id="hsCoverage" class="field"><option>12h</option><option>24h</option><option>Personalizada</option></select></div>
+    <div class="form-group"><label>Status</label><select id="hsStatus" class="field"><option value="active">Ativa</option><option value="inactive">Inativa</option></select></div>
+    <div class="form-group full"><label>Endereço</label><input id="hsAddress" class="field"></div>
+    <div class="form-group full"><label>Observações</label><textarea id="hsNotes" class="field"></textarea></div>
+  </div><div class="modal-actions"><button type="button" id="deleteHouseBtn" class="btn danger">Excluir</button><button class="btn primary">Salvar</button></div></form>
+</div></div>
+
+<div id="shiftModal" class="modal"><div class="modal-card">
+  <div class="modal-head"><h3>Plantão</h3><button class="btn" data-close="shiftModal">✕</button></div>
+  <form id="shiftForm"><input id="shiftId" type="hidden"><div class="form-grid">
+    <div class="form-group"><label>Data</label><input id="shDate" class="field" type="date" required></div>
+    <div class="form-group"><label>Casa</label><select id="shHouse" class="field" required></select></div>
+    <div class="form-group"><label>Cuidador previsto</label><select id="shPlanned" class="field"></select></div>
+    <div class="form-group"><label>Cuidador que realizou</label><select id="shActual" class="field" required></select></div>
+    <div class="form-group"><label>Turno</label><select id="shTurn" class="field"><option value="day">Diurno</option><option value="night">Noturno</option><option value="24h">24 horas</option></select></div>
+    <div class="form-group"><label>Tipo</label><select id="shType" class="field"><option value="normal">Normal</option><option value="support">Suporte</option><option value="extra">Extra</option><option value="swap">Troca</option></select></div>
+    <div class="form-group"><label>Valor</label><input id="shValue" class="field" type="number" min="0" step="0.01" required></div>
+    <div class="form-group"><label>Status</label><select id="shStatus" class="field"><option value="planned">Previsto</option><option value="completed">Realizado</option><option value="absence">Falta</option><option value="cancelled">Cancelado</option></select></div>
+    <div class="form-group full"><label>Motivo da substituição / observações</label><textarea id="shNotes" class="field"></textarea></div>
+  </div><div class="modal-actions"><button type="button" id="deleteShiftBtn" class="btn danger">Excluir</button><button class="btn primary">Salvar</button></div></form>
+</div></div>
+
+<script src="app.js"></script>
+</body>
+</html>
