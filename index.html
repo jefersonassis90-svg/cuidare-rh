@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cuidare RH</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=20260801-4"></script>
+  <script src="config.js?v=20260801-5"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <style>
@@ -74,7 +74,6 @@
       <button data-view="caregivers">Cuidadores</button>
       <button data-view="houses">Casas e escalas</button>
       <button data-view="supports">Suportes</button>
-      <button data-view="closing">Fechamento</button>
       <button data-view="advances">Adiantamentos</button>
       <button data-view="receipts">Recibos</button>
     </nav>
@@ -129,11 +128,6 @@
         Ao registrar um suporte, o sistema localiza automaticamente o cuidador fixo previsto para a casa, data e turno.
       </div>
       <div class="table-wrap"><table><thead><tr><th>Data</th><th>Casa</th><th>Cuidador fixo</th><th>Cuidador de suporte</th><th>Turno</th><th>Valor</th><th>Motivo</th><th></th></tr></thead><tbody id="supportsBody"></tbody></table></div>
-    </section>
-
-    <section id="closingView" class="view">
-      <div class="toolbar"><input id="closingMonth" class="field" type="month" style="max-width:190px"><button id="refreshClosingBtn" class="btn">Atualizar</button></div>
-      <div class="table-wrap"><table><thead><tr><th>Cuidador</th><th>Plantões 12h</th><th>Plantões 24h</th><th>Plantões considerados</th><th>Total</th><th>Recibo</th></tr></thead><tbody id="closingBody"></tbody></table></div>
     </section>
 
 
@@ -294,7 +288,7 @@
   </form>
 </div></div>
 
-<script src="masks.js?v=20260801-4"></script>
-<script src="app.js?v=20260801-4"></script>
+<script src="masks.js?v=20260801-5"></script>
+<script src="app.js?v=20260801-5"></script>
 </body>
 </html>

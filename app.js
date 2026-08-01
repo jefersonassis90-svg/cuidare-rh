@@ -37,11 +37,8 @@ async function loadAll(){
 function setView(v){
   view=v;$$('.view').forEach(x=>x.classList.remove('active'));$('#'+v+'View').classList.add('active');
   $$('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.view===v));
-  $('#pageTitle').textContent={dashboard:'Dashboard',caregivers:'Cuidadores',houses:'Casas e escalas',supports:'Suportes',closing:'Fechamento mensal',advances:'Adiantamentos',receipts:'Recibos'}[v];
-  if(v==='receipts'&&$('#closingMonth')?.value){
-    $('#receiptMonth').value=$('#closingMonth').value;
-  }
-  render();
+  $('#pageTitle').textContent={dashboard:'Dashboard',caregivers:'Cuidadores',houses:'Casas e escalas',supports:'Suportes',advances:'Adiantamentos',receipts:'Recibos'}[v];
+render();
 }
 $$('.nav button').forEach(b=>b.onclick=()=>setView(b.dataset.view));
 
@@ -55,7 +52,7 @@ function render(){
   $('#todayShifts').innerHTML=todays.length?todays.map(x=>`<p><strong>${houseName(x.house_id)}</strong> — previsto: ${caregiverName(x.planned_caregiver_id)}${x.shift_type==='support'?` · suporte: ${caregiverName(x.actual_caregiver_id)}`:''} (${labelTurn(x.turn)})</p>`).join(''):'<div class="empty">Nenhuma escala gerada para hoje.</div>';
   const monthShifts=shifts.filter(x=>x.shift_date.startsWith(month));
   $('#monthSummary').innerHTML=`<p>Plantões previstos: <strong>${monthShifts.length}</strong></p><p>Substituições por suporte: <strong>${monthSupports.length}</strong></p><p>Folha estimada até hoje: <strong>${money(calculateClosing(month).reduce((a,b)=>a+b.total,0))}</strong></p>`;
-  renderCaregivers();renderHouses();renderAssignments();renderSupports();renderAdvances();renderClosing();renderReceipts();
+  renderCaregivers();renderHouses();renderAssignments();renderSupports();renderAdvances();renderReceipts();
 }
 
 function renderCaregivers(){
@@ -295,19 +292,6 @@ function calculateClosing(month){
     return row;
   });
 }
-function renderClosing(){
-  const month=$('#closingMonth').value||monthNow();
-  const rows=calculateClosing(month);
-  $('#closingBody').innerHTML=rows.length?rows.map(x=>`<tr>
-    <td>${caregiverName(x.caregiverId)}</td>
-    <td>${x.h12}</td>
-    <td>${x.h24}</td>
-    <td>${x.count}</td>
-    <td><strong>${money(x.total)}</strong></td>
-    <td><button class="btn small" onclick="generateReceipt('${x.caregiverId}','${month}')">Gerar recibo</button></td>
-  </tr>`).join(''):'<tr><td colspan="6" class="empty">Nenhum plantão considerado no período.</td></tr>';
-}
-$('#closingMonth').value=monthNow();$('#closingMonth').onchange=()=>{renderClosing();$('#receiptMonth').value=$('#closingMonth').value;renderReceipts()};$('#refreshClosingBtn').onclick=renderClosing;
 
 function monthPeriod(month){
   const [year,monthNumber]=month.split('-').map(Number);
