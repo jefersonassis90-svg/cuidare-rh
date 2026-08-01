@@ -116,13 +116,13 @@
   <div class="modal-head"><h3>Cuidador</h3><button class="btn" data-close="caregiverModal">✕</button></div>
   <form id="caregiverForm"><input id="caregiverId" type="hidden"><div class="form-grid">
     <div class="form-group full"><label>Nome completo</label><input id="cgName" class="field" required></div>
-    <div class="form-group"><label>CPF</label><input id="cgCpf" class="field"></div>
-    <div class="form-group"><label>Telefone</label><input id="cgPhone" class="field"></div>
+    <div class="form-group"><label>CPF</label><input id="cgCpf" class="field" maxlength="14" inputmode="numeric" placeholder="000.000.000-00" autocomplete="off"></div>
+    <div class="form-group"><label>Telefone</label><input id="cgPhone" class="field" maxlength="15" inputmode="tel" placeholder="(00) 00000-0000" autocomplete="tel"></div>
     <div class="form-group"><label>Tipo de atuação</label><select id="cgType" class="field"><option value="fixed">Fixo</option><option value="support">Suporte</option><option value="both">Fixo e suporte</option></select></div>
     <div class="form-group"><label>Função</label><input id="cgRole" class="field" placeholder="Cuidador, técnico..."></div>
-    <div class="form-group"><label>Chave PIX</label><input id="cgPix" class="field"></div>
+    <div class="form-group"><label>Tipo da chave PIX</label><select id="cgPixType" class="field"><option value="cpf">CPF</option><option value="cnpj">CNPJ</option><option value="phone">Telefone</option><option value="email">E-mail</option><option value="random">Chave aleatória</option></select></div><div class="form-group"><label>Chave PIX</label><input id="cgPix" class="field" maxlength="77" placeholder="Informe a chave PIX" autocomplete="off"></div>
     <div class="form-group"><label>Possui MEI?</label><select id="cgMei" class="field"><option value="false">Não</option><option value="true">Sim</option></select></div>
-    <div class="form-group"><label>CNPJ</label><input id="cgCnpj" class="field"></div>
+    <div class="form-group"><label>CNPJ</label><input id="cgCnpj" class="field" maxlength="18" inputmode="numeric" placeholder="00.000.000/0000-00" autocomplete="off"></div>
     <div class="form-group"><label>Status</label><select id="cgStatus" class="field"><option value="active">Ativo</option><option value="away">Afastado</option><option value="inactive">Inativo</option></select></div>
     <div class="form-group full"><label>Observações</label><textarea id="cgNotes" class="field"></textarea></div>
   </div><div class="modal-actions"><button type="button" id="deleteCaregiverBtn" class="btn danger">Excluir</button><button class="btn primary">Salvar</button></div></form>
@@ -134,10 +134,10 @@
     <div class="form-group full"><label>Nome ou identificação</label><input id="hsName" class="field" required></div>
     <div class="form-group"><label>Código interno</label><input id="hsCode" class="field"></div>
     <div class="form-group"><label>Responsável</label><input id="hsResponsible" class="field"></div>
-    <div class="form-group"><label>Telefone</label><input id="hsPhone" class="field"></div>
+    <div class="form-group"><label>Telefone</label><input id="hsPhone" class="field" maxlength="15" inputmode="tel" placeholder="(00) 00000-0000" autocomplete="tel"></div>
     <div class="form-group"><label>Tipo de cobertura</label><select id="hsCoverage" class="field"><option>12h</option><option>24h</option><option>Personalizada</option></select></div>
     <div class="form-group"><label>Status</label><select id="hsStatus" class="field"><option value="active">Ativa</option><option value="inactive">Inativa</option></select></div>
-    <div class="form-group full"><label>Endereço</label><input id="hsAddress" class="field"></div>
+    <div class="form-group"><label>CEP</label><input id="hsCep" class="field" maxlength="9" inputmode="numeric" placeholder="00000-000" autocomplete="postal-code"></div><div class="form-group full"><label>Endereço</label><input id="hsAddress" class="field"></div>
     <div class="form-group full"><label>Observações</label><textarea id="hsNotes" class="field"></textarea></div>
   </div><div class="modal-actions"><button type="button" id="deleteHouseBtn" class="btn danger">Excluir</button><button class="btn primary">Salvar</button></div></form>
 </div></div>
@@ -151,12 +151,13 @@
     <div class="form-group"><label>Cuidador que realizou</label><select id="shActual" class="field" required></select></div>
     <div class="form-group"><label>Turno</label><select id="shTurn" class="field"><option value="day">Diurno</option><option value="night">Noturno</option><option value="24h">24 horas</option></select></div>
     <div class="form-group"><label>Tipo</label><select id="shType" class="field"><option value="normal">Normal</option><option value="support">Suporte</option><option value="extra">Extra</option><option value="swap">Troca</option></select></div>
-    <div class="form-group"><label>Valor</label><input id="shValue" class="field" type="number" min="0" step="0.01" required></div>
+    <div class="form-group"><label>Valor</label><input id="shValue" class="field" type="text" inputmode="numeric" placeholder="R$ 0,00" required></div>
     <div class="form-group"><label>Status</label><select id="shStatus" class="field"><option value="planned">Previsto</option><option value="completed">Realizado</option><option value="absence">Falta</option><option value="cancelled">Cancelado</option></select></div>
     <div class="form-group full"><label>Motivo da substituição / observações</label><textarea id="shNotes" class="field"></textarea></div>
   </div><div class="modal-actions"><button type="button" id="deleteShiftBtn" class="btn danger">Excluir</button><button class="btn primary">Salvar</button></div></form>
 </div></div>
 
+<script src="masks.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

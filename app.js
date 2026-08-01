@@ -4,6 +4,8 @@ const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 let user=null,caregivers=[],houses=[],shifts=[],view='dashboard';
 
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const unmask=v=>window.Masks?.onlyNumbers(v||'')||String(v||'').replace(/\D/g,'');
+const moneyToNumber=v=>window.Masks?.moneyToNumber(v)||Number(v||0);
 const dateBR=s=>s?new Date(s+'T12:00:00').toLocaleDateString('pt-BR'):'';
 const monthNow=()=>new Date().toISOString().slice(0,7);
 const labelType=v=>({fixed:'Fixo',support:'Suporte',both:'Fixo e suporte'}[v]||v);
@@ -49,23 +51,24 @@ function houseName(id){return houses.find(x=>x.id===id)?.name||'-'}
 
 function renderCaregivers(){
   const q=$('#caregiverSearch').value.toLowerCase();
-  const list=caregivers.filter(x=>x.name.toLowerCase().includes(q)||(x.cpf||'').includes(q));
+  const list=caregivers.filter(x=>x.name.toLowerCase().includes(q)||(x.cpf||'').includes(q)||unmask(x.cpf).includes(unmask(q)));
   $('#caregiversBody').innerHTML=list.length?list.map(x=>`<tr>
     <td>${x.name}</td><td>${x.cpf||''}</td><td>${labelType(x.work_type)}</td><td>${x.phone||''}</td><td>${x.pix_key||''}</td>
     <td>${x.has_mei?badge('Sim','ok'):badge('Não')}</td><td>${badge(labelStatus(x.status),x.status==='active'?'ok':'warn')}</td>
     <td><button class="btn" onclick="editCaregiver('${x.id}')">Editar</button></td></tr>`).join(''):'<tr><td colspan="8" class="empty">Nenhum cuidador.</td></tr>';
 }
 $('#caregiverSearch').oninput=renderCaregivers;
+$('#cgPixType').onchange=()=>window.Masks?.applyPixMask($('#cgPix'),$('#cgPixType').value);
 $('#newCaregiverBtn').onclick=()=>editCaregiver();
 window.editCaregiver=id=>{
   const x=caregivers.find(a=>a.id===id);
   $('#caregiverId').value=x?.id||'';$('#cgName').value=x?.name||'';$('#cgCpf').value=x?.cpf||'';$('#cgPhone').value=x?.phone||'';
-  $('#cgType').value=x?.work_type||'fixed';$('#cgRole').value=x?.role||'';$('#cgPix').value=x?.pix_key||'';
+  $('#cgType').value=x?.work_type||'fixed';$('#cgRole').value=x?.role||'';$('#cgPixType').value=x?.pix_type||'cpf';$('#cgPix').value=x?.pix_key||'';
   $('#cgMei').value=String(x?.has_mei||false);$('#cgCnpj').value=x?.cnpj||'';$('#cgStatus').value=x?.status||'active';$('#cgNotes').value=x?.notes||'';
-  $('#deleteCaregiverBtn').style.display=id?'inline-block':'none';openModal('caregiverModal');
+  $('#deleteCaregiverBtn').style.display=id?'inline-block':'none';window.Masks?.refresh();openModal('caregiverModal');
 };
 $('#caregiverForm').onsubmit=async e=>{
-  e.preventDefault();const id=$('#caregiverId').value,p={name:$('#cgName').value.trim(),cpf:$('#cgCpf').value.trim()||null,phone:$('#cgPhone').value.trim()||null,work_type:$('#cgType').value,role:$('#cgRole').value.trim()||null,pix_key:$('#cgPix').value.trim()||null,has_mei:$('#cgMei').value==='true',cnpj:$('#cgCnpj').value.trim()||null,status:$('#cgStatus').value,notes:$('#cgNotes').value.trim()||null,updated_at:new Date().toISOString()};
+  e.preventDefault();const id=$('#caregiverId').value,p={name:$('#cgName').value.trim(),cpf:$('#cgCpf').value.trim()||null,phone:$('#cgPhone').value.trim()||null,work_type:$('#cgType').value,role:$('#cgRole').value.trim()||null,pix_type:$('#cgPixType').value,pix_key:$('#cgPix').value.trim()||null,has_mei:$('#cgMei').value==='true',cnpj:$('#cgCnpj').value.trim()||null,status:$('#cgStatus').value,notes:$('#cgNotes').value.trim()||null,updated_at:new Date().toISOString()};
   const r=id?await db.from('caregivers').update(p).eq('id',id):await db.from('caregivers').insert({...p,created_by:user.id});
   if(r.error)return alert(r.error.message);closeModal('caregiverModal');loadAll();
 };
@@ -76,8 +79,8 @@ function renderHouses(){
   $('#housesBody').innerHTML=list.length?list.map(x=>`<tr><td>${x.name}</td><td>${x.code||''}</td><td>${x.responsible_name||''}</td><td>${x.phone||''}</td><td>${x.coverage_type||''}</td><td>${badge(labelStatus(x.status),x.status==='active'?'ok':'warn')}</td><td><button class="btn" onclick="editHouse('${x.id}')">Editar</button></td></tr>`).join(''):'<tr><td colspan="7" class="empty">Nenhuma casa.</td></tr>';
 }
 $('#houseSearch').oninput=renderHouses;$('#newHouseBtn').onclick=()=>editHouse();
-window.editHouse=id=>{const x=houses.find(a=>a.id===id);$('#houseId').value=x?.id||'';$('#hsName').value=x?.name||'';$('#hsCode').value=x?.code||'';$('#hsResponsible').value=x?.responsible_name||'';$('#hsPhone').value=x?.phone||'';$('#hsCoverage').value=x?.coverage_type||'12h';$('#hsStatus').value=x?.status||'active';$('#hsAddress').value=x?.address||'';$('#hsNotes').value=x?.notes||'';$('#deleteHouseBtn').style.display=id?'inline-block':'none';openModal('houseModal')};
-$('#houseForm').onsubmit=async e=>{e.preventDefault();const id=$('#houseId').value,p={name:$('#hsName').value.trim(),code:$('#hsCode').value.trim()||null,responsible_name:$('#hsResponsible').value.trim()||null,phone:$('#hsPhone').value.trim()||null,coverage_type:$('#hsCoverage').value,status:$('#hsStatus').value,address:$('#hsAddress').value.trim()||null,notes:$('#hsNotes').value.trim()||null,updated_at:new Date().toISOString()};const r=id?await db.from('houses').update(p).eq('id',id):await db.from('houses').insert({...p,created_by:user.id});if(r.error)return alert(r.error.message);closeModal('houseModal');loadAll()};
+window.editHouse=id=>{const x=houses.find(a=>a.id===id);$('#houseId').value=x?.id||'';$('#hsName').value=x?.name||'';$('#hsCode').value=x?.code||'';$('#hsResponsible').value=x?.responsible_name||'';$('#hsPhone').value=x?.phone||'';$('#hsCoverage').value=x?.coverage_type||'12h';$('#hsStatus').value=x?.status||'active';$('#hsCep').value=x?.cep||'';$('#hsAddress').value=x?.address||'';$('#hsNotes').value=x?.notes||'';$('#deleteHouseBtn').style.display=id?'inline-block':'none';window.Masks?.refresh();openModal('houseModal')};
+$('#houseForm').onsubmit=async e=>{e.preventDefault();const id=$('#houseId').value,p={name:$('#hsName').value.trim(),code:$('#hsCode').value.trim()||null,responsible_name:$('#hsResponsible').value.trim()||null,phone:$('#hsPhone').value.trim()||null,coverage_type:$('#hsCoverage').value,status:$('#hsStatus').value,cep:$('#hsCep').value.trim()||null,address:$('#hsAddress').value.trim()||null,notes:$('#hsNotes').value.trim()||null,updated_at:new Date().toISOString()};const r=id?await db.from('houses').update(p).eq('id',id):await db.from('houses').insert({...p,created_by:user.id});if(r.error)return alert(r.error.message);closeModal('houseModal');loadAll()};
 $('#deleteHouseBtn').onclick=async()=>{const id=$('#houseId').value;if(confirm('Excluir casa?')){const r=await db.from('houses').delete().eq('id',id);if(r.error)return alert(r.error.message);closeModal('houseModal');loadAll()}};
 
 function fillShiftSelects(){
@@ -90,8 +93,8 @@ function renderShifts(){
   $('#shiftsBody').innerHTML=list.length?list.map(x=>`<tr><td>${dateBR(x.shift_date)}</td><td>${houseName(x.house_id)}</td><td>${caregiverName(x.planned_caregiver_id)}</td><td>${caregiverName(x.actual_caregiver_id)}</td><td>${x.turn}</td><td>${x.shift_type}</td><td>${money(x.amount)}</td><td>${badge(labelStatus(x.status),x.status==='completed'?'ok':x.status==='absence'?'danger':'warn')}</td><td><button class="btn" onclick="editShift('${x.id}')">Editar</button></td></tr>`).join(''):'<tr><td colspan="9" class="empty">Nenhum plantão no período.</td></tr>';
 }
 $('#shiftMonth').value=monthNow();$('#shiftMonth').onchange=renderShifts;$('#newShiftBtn').onclick=()=>editShift();
-window.editShift=id=>{fillShiftSelects();const x=shifts.find(a=>a.id===id);$('#shiftId').value=x?.id||'';$('#shDate').value=x?.shift_date||new Date().toISOString().slice(0,10);$('#shHouse').value=x?.house_id||$('#shHouse').value;$('#shPlanned').value=x?.planned_caregiver_id||'';$('#shActual').value=x?.actual_caregiver_id||$('#shActual').value;$('#shTurn').value=x?.turn||'day';$('#shType').value=x?.shift_type||'normal';$('#shValue').value=x?.amount||'';$('#shStatus').value=x?.status||'planned';$('#shNotes').value=x?.notes||'';$('#deleteShiftBtn').style.display=id?'inline-block':'none';openModal('shiftModal')};
-$('#shiftForm').onsubmit=async e=>{e.preventDefault();const id=$('#shiftId').value,p={shift_date:$('#shDate').value,house_id:$('#shHouse').value,planned_caregiver_id:$('#shPlanned').value||null,actual_caregiver_id:$('#shActual').value,turn:$('#shTurn').value,shift_type:$('#shType').value,amount:Number($('#shValue').value),status:$('#shStatus').value,notes:$('#shNotes').value.trim()||null,updated_at:new Date().toISOString()};const r=id?await db.from('shifts').update(p).eq('id',id):await db.from('shifts').insert({...p,created_by:user.id});if(r.error)return alert(r.error.message);closeModal('shiftModal');loadAll()};
+window.editShift=id=>{fillShiftSelects();const x=shifts.find(a=>a.id===id);$('#shiftId').value=x?.id||'';$('#shDate').value=x?.shift_date||new Date().toISOString().slice(0,10);$('#shHouse').value=x?.house_id||$('#shHouse').value;$('#shPlanned').value=x?.planned_caregiver_id||'';$('#shActual').value=x?.actual_caregiver_id||$('#shActual').value;$('#shTurn').value=x?.turn||'day';$('#shType').value=x?.shift_type||'normal';$('#shValue').value=x?.amount!=null?window.Masks.formatMoneyFromNumber(x.amount):'';$('#shStatus').value=x?.status||'planned';$('#shNotes').value=x?.notes||'';$('#deleteShiftBtn').style.display=id?'inline-block':'none';window.Masks?.refresh();openModal('shiftModal')};
+$('#shiftForm').onsubmit=async e=>{e.preventDefault();const id=$('#shiftId').value,p={shift_date:$('#shDate').value,house_id:$('#shHouse').value,planned_caregiver_id:$('#shPlanned').value||null,actual_caregiver_id:$('#shActual').value,turn:$('#shTurn').value,shift_type:$('#shType').value,amount:moneyToNumber($('#shValue').value),status:$('#shStatus').value,notes:$('#shNotes').value.trim()||null,updated_at:new Date().toISOString()};const r=id?await db.from('shifts').update(p).eq('id',id):await db.from('shifts').insert({...p,created_by:user.id});if(r.error)return alert(r.error.message);closeModal('shiftModal');loadAll()};
 $('#deleteShiftBtn').onclick=async()=>{const id=$('#shiftId').value;if(confirm('Excluir plantão?')){const r=await db.from('shifts').delete().eq('id',id);if(r.error)return alert(r.error.message);closeModal('shiftModal');loadAll()}};
 
 function renderClosing(){
