@@ -37,6 +37,9 @@ function setView(v){
   view=v;$$('.view').forEach(x=>x.classList.remove('active'));$('#'+v+'View').classList.add('active');
   $$('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.view===v));
   $('#pageTitle').textContent={dashboard:'Dashboard',caregivers:'Cuidadores',houses:'Casas e escalas',supports:'Suportes',closing:'Fechamento mensal',receipts:'Recibos'}[v];
+  if(v==='receipts'&&$('#closingMonth')?.value){
+    $('#receiptMonth').value=$('#closingMonth').value;
+  }
   render();
 }
 $$('.nav button').forEach(b=>b.onclick=()=>setView(b.dataset.view));
@@ -211,6 +214,7 @@ function monthPeriod(month){
   };
 }
 function receiptDocument(caregiverId,month,doc=null,addPage=false){
+  if(!window.jspdf?.jsPDF)throw new Error('A biblioteca de PDF não foi carregada. Atualize a página com Ctrl + F5.');
   const row=calculateClosing(month).find(x=>x.caregiverId===caregiverId);
   const caregiver=caregivers.find(x=>x.id===caregiverId);
   if(!row||!caregiver)throw new Error('Não há fechamento para este cuidador no período.');
