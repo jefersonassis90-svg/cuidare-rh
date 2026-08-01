@@ -278,23 +278,15 @@ function receiptDocument(caregiverId,month,doc=null,addPage=false){
   const declLines=pdf.splitTextToSize(declaration,width);
   pdf.text(declLines,left,114);
 
-  let tableY=114+declLines.length*5+5;
-  const houseRows=Object.values(row.houses)
-    .sort((a,b)=>houseName(a.houseId).localeCompare(houseName(b.houseId)))
-    .map(h=>[houseName(h.houseId),String(h.h12),String(h.h24),money(h.total)]);
-  pdf.autoTable({
-    startY:tableY,
-    head:[['Casa','Plantões 12h','Plantões 24h','Valor']],
-    body:houseRows,
-    foot:[['TOTAL',String(row.h12),String(row.h24),money(row.total)]],
-    theme:'grid',
-    margin:{left,right:18},
-    styles:{fontSize:9,cellPadding:2.4,lineColor:[100,100,100],lineWidth:.15},
-    headStyles:{fillColor:[235,240,248],textColor:[15,35,70],fontStyle:'bold'},
-    footStyles:{fillColor:[235,240,248],textColor:[15,35,70],fontStyle:'bold'}
-  });
+  let y=114+declLines.length*5+12;
 
-  let y=pdf.lastAutoTable.finalY+12;
+  pdf.setFont('helvetica','bold');
+  pdf.setFontSize(10.5);
+  pdf.text(`Plantões de 12 horas: ${row.h12}`,left,y);
+  pdf.text(`Plantões de 24 horas: ${row.h24}`,left,y+8);
+  pdf.text(`Valor Total: ${money(row.total)}`,left,y+18);
+
+  y+=32;
   pdf.setFont('helvetica','bold');pdf.setFontSize(10.5);
   pdf.text('Forma de Pagamento:',left,y);
   pdf.setFont('helvetica','normal');
