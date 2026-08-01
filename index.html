@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cuidare RH</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=20260801-3"></script>
+  <script src="config.js?v=20260801-4"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <style>
@@ -74,7 +74,9 @@
       <button data-view="caregivers">Cuidadores</button>
       <button data-view="houses">Casas e escalas</button>
       <button data-view="supports">Suportes</button>
-            <button data-view="receipts">Recibos</button>
+      <button data-view="closing">Fechamento</button>
+      <button data-view="advances">Adiantamentos</button>
+      <button data-view="receipts">Recibos</button>
     </nav>
     <div class="side-bottom"><button id="logoutBtn" class="btn">Sair</button></div>
   </aside>
@@ -129,6 +131,43 @@
       <div class="table-wrap"><table><thead><tr><th>Data</th><th>Casa</th><th>Cuidador fixo</th><th>Cuidador de suporte</th><th>Turno</th><th>Valor</th><th>Motivo</th><th></th></tr></thead><tbody id="supportsBody"></tbody></table></div>
     </section>
 
+    <section id="closingView" class="view">
+      <div class="toolbar"><input id="closingMonth" class="field" type="month" style="max-width:190px"><button id="refreshClosingBtn" class="btn">Atualizar</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Cuidador</th><th>Plantões 12h</th><th>Plantões 24h</th><th>Plantões considerados</th><th>Total</th><th>Recibo</th></tr></thead><tbody id="closingBody"></tbody></table></div>
+    </section>
+
+
+    <section id="advancesView" class="view">
+      <div class="toolbar">
+        <div class="toolbar-group">
+          <input id="advanceMonth" class="field" type="month" style="max-width:190px">
+          <span class="muted">Limite mensal recomendado: <strong>R$ 200,00</strong></span>
+        </div>
+        <button id="newAdvanceBtn" class="btn primary">+ Novo adiantamento</button>
+      </div>
+
+      <div class="info-box" style="margin-bottom:14px">
+        O limite de R$ 200,00 é apenas informativo. Valores acima desse limite serão permitidos, mas o sistema exibirá um aviso.
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Cuidador</th>
+              <th>Competência</th>
+              <th>Valor</th>
+              <th>Forma de pagamento</th>
+              <th>Observação</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="advancesBody"></tbody>
+        </table>
+      </div>
+    </section>
+
     <section id="receiptsView" class="view">
       <div class="toolbar">
         <div class="toolbar-group">
@@ -147,7 +186,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Cuidador</th><th>CPF/CNPJ</th><th>Plantões 12h</th><th>Plantões 24h</th><th>Total</th><th></th></tr></thead>
+          <thead><tr><th>Cuidador</th><th>CPF/CNPJ</th><th>Plantões 12h</th><th>Plantões 24h</th><th>Bruto</th><th>Adiantamentos</th><th>Líquido</th><th></th></tr></thead>
           <tbody id="receiptsBody"></tbody>
         </table>
       </div>
@@ -226,7 +265,36 @@
   </div><div class="modal-actions"><button class="btn primary">Registrar suporte</button></div></form>
 </div></div>
 
-<script src="masks.js?v=20260801-3"></script>
-<script src="app.js?v=20260801-3"></script>
+
+<!-- ADIANTAMENTO -->
+<div id="advanceModal" class="modal"><div class="modal-card">
+  <div class="modal-head"><h3>Adiantamento</h3><button class="btn" data-close="advanceModal">✕</button></div>
+  <form id="advanceForm">
+    <input id="advanceId" type="hidden">
+    <div class="form-grid">
+      <div class="form-group"><label>Cuidador</label><select id="adCaregiver" class="field" required></select></div>
+      <div class="form-group"><label>Data do adiantamento</label><input id="adDate" class="field" type="date" required></div>
+      <div class="form-group"><label>Competência do desconto</label><input id="adCompetence" class="field" type="month" required></div>
+      <div class="form-group"><label>Valor</label><input id="adAmount" class="field" inputmode="numeric" placeholder="R$ 0,00" required></div>
+      <div class="form-group"><label>Forma de pagamento</label>
+        <select id="adPaymentMethod" class="field">
+          <option value="pix">PIX</option>
+          <option value="transfer">Transferência Bancária</option>
+          <option value="cash">Dinheiro</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Total já lançado na competência</label><input id="adMonthTotal" class="field" readonly></div>
+      <div class="form-group full"><label>Observações</label><textarea id="adNotes" class="field"></textarea></div>
+      <div id="advanceLimitWarning" class="info-box full hidden" style="border-color:#f59e0b;background:#fffbeb;color:#92400e"></div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" id="deleteAdvanceBtn" class="btn danger">Excluir</button>
+      <button class="btn primary">Salvar adiantamento</button>
+    </div>
+  </form>
+</div></div>
+
+<script src="masks.js?v=20260801-4"></script>
+<script src="app.js?v=20260801-4"></script>
 </body>
 </html>
