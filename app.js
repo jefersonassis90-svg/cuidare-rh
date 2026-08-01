@@ -123,8 +123,27 @@ function renderCalendar(){
     const dateIso=iso(date);
     const inMonth=date.getMonth()===monthNumber-1;
     const weekend=[0,6].includes(date.getDay());
-    const dayShifts=shifts
-      .filter(x=>x.shift_date===dateIso&&calendarShiftMatches(x))
+    const rawDayShifts=shifts
+      .filter(x=>x.shift_date===dateIso&&calendarShiftMatches(x));
+
+    const uniqueMap=new Map();
+    for(const shift of rawDayShifts){
+      const key=[
+        shift.shift_date,
+        shift.house_id,
+        shift.planned_caregiver_id,
+        shift.actual_caregiver_id,
+        shift.turn,
+        shift.shift_type
+      ].join('|');
+
+      const existing=uniqueMap.get(key);
+      if(!existing||String(shift.updated_at||'')>String(existing.updated_at||'')){
+        uniqueMap.set(key,shift);
+      }
+    }
+
+    const dayShifts=[...uniqueMap.values()]
       .sort((a,b)=>{
         if(a.turn===b.turn)return houseName(a.house_id).localeCompare(houseName(b.house_id));
         return a.turn==='day'?-1:a.turn==='night'?0:1;
@@ -230,7 +249,8 @@ $('#assignmentForm').onsubmit=async e=>{
   if(p.schedule_type==='weekdays'&&!p.weekdays.length)return alert('Selecione pelo menos um dia da semana.');
   const r=id?await db.from('caregiver_house_assignments').update(p).eq('id',id).select().single():await db.from('caregiver_house_assignments').insert({...p,created_by:user.id}).select().single();
   if(r.error)return alert(r.error.message);
-  const generated=await generateAssignmentShifts(r.data,$('#assignmentMonth').value||monthNow());
+  const selectedMonth=$('#assignmentMonth').value||monthNow();
+  const generated=await generateAssignmentRange(r.data,selectedMonth);
   if(generated===false)return;
   closeModal('assignmentModal');
   loadAll();
@@ -258,6 +278,8 @@ $('#generateAllBtn').onclick=async()=>{
   }
   await loadAll();
 };
+
+
 
 function monthBounds(month){
   const [year,monthNumber]=month.split('-').map(Number);
@@ -300,12 +322,14 @@ async function generateAssignmentShifts(a,month){
   nextMonthDate.setDate(nextMonthDate.getDate()+1);
   const nextMonthStart=iso(nextMonthDate);
 
-  // Substitui apenas os plantões automáticos normais deste vínculo no mês.
-  // Plantões já transformados em suporte são preservados.
+  // Remove plantões automáticos normais equivalentes da mesma casa,
+  // cuidador, turno e período, mesmo que tenham sido gerados por vínculo antigo.
   const deleteResult=await db
     .from('shifts')
     .delete()
-    .eq('assignment_id',a.id)
+    .eq('house_id',a.house_id)
+    .eq('planned_caregiver_id',a.caregiver_id)
+    .eq('turn',a.turn)
     .eq('shift_type','normal')
     .gte('shift_date',monthStart)
     .lt('shift_date',nextMonthStart);
@@ -336,14 +360,30 @@ async function generateAssignmentShifts(a,month){
 
   if(!rows.length)return true;
 
-  const insertResult=await db.from('shifts').upsert(rows,{
-    onConflict:'assignment_id,shift_date,turn',
-    ignoreDuplicates:true
-  });
+  const insertResult=await db.from('shifts').insert(rows);
 
   if(insertResult.error){
     alert('Erro ao gerar escala: '+insertResult.error.message);
     return false;
+  }
+
+  return true;
+}
+
+
+async function generateAssignmentRange(assignment,endMonth){
+  const firstMonth=assignment.start_date.slice(0,7);
+  const [startYear,startMonth]=firstMonth.split('-').map(Number);
+  const [endYear,endMonthNumber]=endMonth.split('-').map(Number);
+
+  let cursor=new Date(startYear,startMonth-1,1,12,0,0,0);
+  const endCursor=new Date(endYear,endMonthNumber-1,1,12,0,0,0);
+
+  while(cursor<=endCursor){
+    const monthValue=`${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}`;
+    const generated=await generateAssignmentShifts(assignment,monthValue);
+    if(generated===false)return false;
+    cursor.setMonth(cursor.getMonth()+1);
   }
 
   return true;
