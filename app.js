@@ -37,7 +37,7 @@ async function loadAll(){
 function setView(v){
   view=v;$$('.view').forEach(x=>x.classList.remove('active'));$('#'+v+'View').classList.add('active');
   $$('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.view===v));
-  $('#pageTitle').textContent={dashboard:'Dashboard',caregivers:'Cuidadores',houses:'Casas e escalas',supports:'Suportes',advances:'Adiantamentos',receipts:'Recibos'}[v];
+  $('#pageTitle').textContent={dashboard:'Dashboard',calendar:'Calendário de escalas',caregivers:'Cuidadores',houses:'Casas e escalas',supports:'Suportes',advances:'Adiantamentos',receipts:'Recibos'}[v];
 render();
 }
 $$('.nav button').forEach(b=>b.onclick=()=>setView(b.dataset.view));
@@ -52,8 +52,127 @@ function render(){
   $('#todayShifts').innerHTML=todays.length?todays.map(x=>`<p><strong>${houseName(x.house_id)}</strong> — previsto: ${caregiverName(x.planned_caregiver_id)}${x.shift_type==='support'?` · suporte: ${caregiverName(x.actual_caregiver_id)}`:''} (${labelTurn(x.turn)})</p>`).join(''):'<div class="empty">Nenhuma escala gerada para hoje.</div>';
   const monthShifts=shifts.filter(x=>x.shift_date.startsWith(month));
   $('#monthSummary').innerHTML=`<p>Plantões previstos: <strong>${monthShifts.length}</strong></p><p>Substituições por suporte: <strong>${monthSupports.length}</strong></p><p>Folha estimada até hoje: <strong>${money(calculateClosing(month).reduce((a,b)=>a+b.total,0))}</strong></p>`;
-  renderCaregivers();renderHouses();renderAssignments();renderSupports();renderAdvances();renderReceipts();
+  renderCalendarFilters();renderCalendar();renderCaregivers();renderHouses();renderAssignments();renderSupports();renderAdvances();renderReceipts();
 }
+
+
+function renderCalendarFilters(){
+  const selectedHouse=$('#calendarHouse')?.value||'';
+  const selectedCaregiver=$('#calendarCaregiver')?.value||'';
+
+  if($('#calendarHouse')){
+    $('#calendarHouse').innerHTML='<option value="">Todas as casas</option>'+
+      houses.filter(x=>x.status==='active').map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+    $('#calendarHouse').value=selectedHouse;
+  }
+
+  if($('#calendarCaregiver')){
+    $('#calendarCaregiver').innerHTML='<option value="">Todos os cuidadores</option>'+
+      caregivers.filter(x=>x.status==='active').map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+    $('#calendarCaregiver').value=selectedCaregiver;
+  }
+}
+function calendarShiftMatches(shift){
+  const houseId=$('#calendarHouse')?.value||'';
+  const caregiverId=$('#calendarCaregiver')?.value||'';
+  const type=$('#calendarType')?.value||'';
+
+  if(houseId&&shift.house_id!==houseId)return false;
+  if(caregiverId&&shift.planned_caregiver_id!==caregiverId&&shift.actual_caregiver_id!==caregiverId)return false;
+  if(type==='support'&&shift.shift_type!=='support')return false;
+  if(type==='24h'&&shift.turn!=='24h')return false;
+  if(type==='12h'&&shift.turn==='24h')return false;
+  return true;
+}
+function plannerEventHtml(shift){
+  const isSupport=shift.shift_type==='support';
+  const is24=shift.turn==='24h';
+  const classes=['planner-event'];
+  if(isSupport)classes.push('support');
+  else if(is24)classes.push('hours24');
+
+  const planned=caregiverName(shift.planned_caregiver_id);
+  const actual=caregiverName(shift.actual_caregiver_id);
+  const caregiverLine=isSupport?`${planned} → ${actual}`:actual;
+  const label=isSupport?'Suporte':labelTurn(shift.turn);
+
+  return `<button class="${classes.join(' ')}" onclick="openCalendarShift('${shift.id}')">
+    <strong>${houseName(shift.house_id)}</strong>
+    <small>${caregiverLine}</small>
+    <small>${label}</small>
+  </button>`;
+}
+function renderCalendar(){
+  const grid=$('#plannerGrid');
+  if(!grid)return;
+
+  const month=$('#calendarMonth').value||monthNow();
+  const [year,monthNumber]=month.split('-').map(Number);
+  const firstDay=new Date(year,monthNumber-1,1,12);
+  const lastDay=new Date(year,monthNumber,0,12);
+  const mondayOffset=(firstDay.getDay()+6)%7;
+  const startDate=new Date(firstDay);
+  startDate.setDate(firstDay.getDate()-mondayOffset);
+  const totalCells=Math.ceil((mondayOffset+lastDay.getDate())/7)*7;
+  const today=todayISO();
+
+  let html='';
+  for(let i=0;i<totalCells;i++){
+    const date=new Date(startDate);
+    date.setDate(startDate.getDate()+i);
+    const dateIso=iso(date);
+    const inMonth=date.getMonth()===monthNumber-1;
+    const weekend=[0,6].includes(date.getDay());
+    const dayShifts=shifts
+      .filter(x=>x.shift_date===dateIso&&calendarShiftMatches(x))
+      .sort((a,b)=>{
+        if(a.turn===b.turn)return houseName(a.house_id).localeCompare(houseName(b.house_id));
+        return a.turn==='day'?-1:a.turn==='night'?0:1;
+      });
+
+    const classes=['planner-day'];
+    if(!inMonth)classes.push('other-month');
+    if(weekend)classes.push('weekend');
+    if(dateIso===today)classes.push('today');
+
+    html+=`<div class="${classes.join(' ')}">
+      <div class="planner-day-number">
+        <span>${date.getDate()}</span>
+        <span class="planner-count">${dayShifts.length?`${dayShifts.length} plantão${dayShifts.length>1?'ões':''}`:''}</span>
+      </div>
+      <div class="planner-events">${dayShifts.map(plannerEventHtml).join('')}</div>
+    </div>`;
+  }
+
+  grid.innerHTML=html||'<div class="planner-empty">Nenhum plantão encontrado para os filtros selecionados.</div>';
+}
+window.openCalendarShift=id=>{
+  const shift=shifts.find(x=>x.id===id);
+  if(!shift)return;
+
+  const isSupport=shift.shift_type==='support';
+  const fields=[
+    ['Data',dateBR(shift.shift_date)],
+    ['Casa',houseName(shift.house_id)],
+    ['Turno',labelTurn(shift.turn)],
+    ['Cuidador previsto',caregiverName(shift.planned_caregiver_id)],
+    ['Cuidador realizado',caregiverName(shift.actual_caregiver_id)],
+    ['Tipo',isSupport?'Substituição por suporte':'Plantão normal'],
+    ['Valor',money(shift.amount)],
+    ['Status',labelStatus(shift.status)],
+    ['Observação',shift.notes||'Sem observações']
+  ];
+
+  $('#calendarDetailContent').innerHTML=fields.map(([label,value])=>
+    `<div class="detail-item"><span>${label}</span><strong>${value}</strong></div>`
+  ).join('');
+  openModal('calendarDetailModal');
+};
+$('#calendarMonth').value=monthNow();
+['calendarMonth','calendarHouse','calendarCaregiver','calendarType'].forEach(id=>{
+  $('#'+id).onchange=renderCalendar;
+});
+
 
 function renderCaregivers(){
   const q=$('#caregiverSearch').value.toLowerCase();
@@ -111,11 +230,34 @@ $('#assignmentForm').onsubmit=async e=>{
   if(p.schedule_type==='weekdays'&&!p.weekdays.length)return alert('Selecione pelo menos um dia da semana.');
   const r=id?await db.from('caregiver_house_assignments').update(p).eq('id',id).select().single():await db.from('caregiver_house_assignments').insert({...p,created_by:user.id}).select().single();
   if(r.error)return alert(r.error.message);
-  await generateAssignmentShifts(r.data,$('#assignmentMonth').value||monthNow());
-  closeModal('assignmentModal');loadAll();
+  const generated=await generateAssignmentShifts(r.data,$('#assignmentMonth').value||monthNow());
+  if(generated===false)return;
+  closeModal('assignmentModal');
+  loadAll();
 };
 $('#deleteAssignmentBtn').onclick=async()=>{const id=$('#assignmentId').value;if(confirm('Excluir vínculo? Os plantões já gerados permanecerão para histórico.')){const r=await db.from('caregiver_house_assignments').delete().eq('id',id);if(r.error)return alert(r.error.message);closeModal('assignmentModal');loadAll()}};
-$('#generateAllBtn').onclick=async()=>{const m=$('#assignmentMonth').value||monthNow();for(const a of assignments.filter(x=>x.status==='active'))await generateAssignmentShifts(a,m);alert('Escalas geradas/atualizadas para o mês selecionado.');loadAll()};
+$('#generateAllBtn').onclick=async()=>{
+  const m=$('#assignmentMonth').value||monthNow();
+  const activeAssignments=assignments.filter(x=>x.status==='active');
+
+  if(!activeAssignments.length){
+    return alert('Não há escalas fixas ativas para gerar.');
+  }
+
+  const ok=confirm('Os plantões automáticos do mês selecionado serão substituídos pelas escalas atuais. Os suportes já registrados serão preservados. Deseja continuar?');
+  if(!ok)return;
+
+  let success=true;
+  for(const a of activeAssignments){
+    const generated=await generateAssignmentShifts(a,m);
+    if(generated===false)success=false;
+  }
+
+  if(success){
+    alert('Escalas do mês substituídas e geradas com sucesso.');
+  }
+  await loadAll();
+};
 
 function monthBounds(month){
   const [year,monthNumber]=month.split('-').map(Number);
@@ -152,7 +294,28 @@ function shouldGenerate(a,d){
   return false;
 }
 async function generateAssignmentShifts(a,month){
-  const {start,end}=monthBounds(month),rows=[];
+  const {start,end}=monthBounds(month);
+  const monthStart=iso(start);
+  const nextMonthDate=new Date(end);
+  nextMonthDate.setDate(nextMonthDate.getDate()+1);
+  const nextMonthStart=iso(nextMonthDate);
+
+  // Substitui apenas os plantões automáticos normais deste vínculo no mês.
+  // Plantões já transformados em suporte são preservados.
+  const deleteResult=await db
+    .from('shifts')
+    .delete()
+    .eq('assignment_id',a.id)
+    .eq('shift_type','normal')
+    .gte('shift_date',monthStart)
+    .lt('shift_date',nextMonthStart);
+
+  if(deleteResult.error){
+    alert('Erro ao substituir a escala existente: '+deleteResult.error.message);
+    return false;
+  }
+
+  const rows=[];
   for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
     if(shouldGenerate(a,d)){
       rows.push({
@@ -170,12 +333,20 @@ async function generateAssignmentShifts(a,month){
       });
     }
   }
-  if(!rows.length)return;
-  const r=await db.from('shifts').upsert(rows,{
+
+  if(!rows.length)return true;
+
+  const insertResult=await db.from('shifts').upsert(rows,{
     onConflict:'assignment_id,shift_date,turn',
     ignoreDuplicates:true
   });
-  if(r.error)alert('Erro ao gerar escala: '+r.error.message);
+
+  if(insertResult.error){
+    alert('Erro ao gerar escala: '+insertResult.error.message);
+    return false;
+  }
+
+  return true;
 }
 
 function fillSupportSelects(){

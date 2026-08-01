@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cuidare RH</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=20260801-6"></script>
+  <script src="config.js?v=20260801-8"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <style>
@@ -47,6 +47,37 @@
     .section-head{display:flex;justify-content:space-between;align-items:center;margin:20px 0 10px}.section-head h3{margin:0}
     .weekdays{display:flex;gap:8px;flex-wrap:wrap}.weekdays label{display:flex;align-items:center;gap:5px;background:#f8fbff;border:1px solid var(--border);padding:8px;border-radius:10px;color:var(--text)}
     .info-box{background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px;color:#1e40af}
+
+    .planner-toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+    .planner-filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .planner-legend{display:flex;gap:12px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:13px}
+    .legend-dot{width:11px;height:11px;border-radius:50%;display:inline-block;margin-right:5px}
+    .legend-normal{background:#3b82f6}.legend-support{background:#f59e0b}.legend-24h{background:#8b5cf6}
+    .planner-shell{background:var(--panel);border:1px solid var(--border);border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
+    .planner-weekdays{display:grid;grid-template-columns:repeat(7,minmax(140px,1fr));background:#eff6ff;border-bottom:1px solid var(--border);min-width:980px}
+    .planner-weekdays div{padding:12px;text-align:center;font-size:12px;font-weight:700;color:#34517e;text-transform:uppercase;letter-spacing:.05em}
+    .planner-grid{display:grid;grid-template-columns:repeat(7,minmax(140px,1fr));grid-auto-rows:minmax(150px,auto);min-width:980px}
+    .planner-scroll{overflow:auto}
+    .planner-day{min-height:150px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:9px;background:#fff}
+    .planner-day:nth-child(7n){border-right:0}.planner-day.other-month{background:#f8fafc}.planner-day.weekend{background:#fbfdff}
+    .planner-day.today{box-shadow:inset 0 0 0 2px var(--primary);background:#f7fbff}
+    .planner-day-number{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-weight:700}
+    .planner-day-number span:first-child{width:29px;height:29px;border-radius:50%;display:grid;place-items:center}
+    .planner-day.today .planner-day-number span:first-child{background:var(--primary);color:#fff}
+    .planner-count{font-size:11px;color:var(--muted);font-weight:500}
+    .planner-events{display:grid;gap:6px;max-height:122px;overflow:auto;padding-right:2px}
+    .planner-event{border:0;border-left:4px solid #3b82f6;background:#eff6ff;border-radius:9px;padding:7px 8px;text-align:left;cursor:pointer;color:var(--text);width:100%;font-size:12px}
+    .planner-event:hover{filter:brightness(.98);transform:translateY(-1px)}
+    .planner-event.support{border-left-color:#f59e0b;background:#fffbeb}
+    .planner-event.hours24{border-left-color:#8b5cf6;background:#f5f3ff}
+    .planner-event strong,.planner-event small{display:block}.planner-event small{color:var(--muted);margin-top:2px}
+    .planner-empty{padding:48px;text-align:center;color:var(--muted)}
+    .detail-list{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .detail-item{border:1px solid var(--border);border-radius:12px;padding:12px;background:#f8fbff}
+    .detail-item span{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+    .detail-item strong{font-size:14px}
+    @media(max-width:950px){.planner-toolbar{align-items:flex-start}.planner-filters{width:100%}.planner-filters .field{min-width:180px}}
+
     @media(max-width:950px){.app{grid-template-columns:1fr}.sidebar{position:static}.nav{grid-template-columns:repeat(5,minmax(max-content,1fr));overflow:auto}.cards{grid-template-columns:repeat(2,1fr)}}
     @media(max-width:650px){.main{padding:15px}.cards{grid-template-columns:1fr 1fr}.form-grid{grid-template-columns:1fr}.full{grid-column:auto}.summary-grid{grid-template-columns:1fr}.topbar{align-items:flex-start;flex-direction:column}}
   </style>
@@ -71,6 +102,7 @@
     <div class="brand"><div class="logo">RH</div><div><h1>Cuidare RH</h1><small>Gestão operacional</small></div></div>
     <nav class="nav">
       <button class="active" data-view="dashboard">Dashboard</button>
+      <button data-view="calendar">Calendário</button>
       <button data-view="caregivers">Cuidadores</button>
       <button data-view="houses">Casas e escalas</button>
       <button data-view="supports">Suportes</button>
@@ -96,6 +128,40 @@
       <div class="summary-grid">
         <div class="summary-box"><h3>Escala de hoje</h3><div id="todayShifts"></div></div>
         <div class="summary-box"><h3>Resumo do mês</h3><div id="monthSummary"></div></div>
+      </div>
+    </section>
+
+    <section id="calendarView" class="view">
+      <div class="planner-toolbar">
+        <div class="planner-filters">
+          <input id="calendarMonth" class="field" type="month" style="max-width:190px">
+          <select id="calendarHouse" class="field" style="min-width:220px">
+            <option value="">Todas as casas</option>
+          </select>
+          <select id="calendarCaregiver" class="field" style="min-width:220px">
+            <option value="">Todos os cuidadores</option>
+          </select>
+          <select id="calendarType" class="field" style="min-width:180px">
+            <option value="">Todos os plantões</option>
+            <option value="12h">Plantões de 12h</option>
+            <option value="24h">Plantões de 24h</option>
+            <option value="support">Somente suportes</option>
+          </select>
+        </div>
+        <div class="planner-legend">
+          <span><i class="legend-dot legend-normal"></i>Plantão normal</span>
+          <span><i class="legend-dot legend-support"></i>Suporte</span>
+          <span><i class="legend-dot legend-24h"></i>24 horas</span>
+        </div>
+      </div>
+
+      <div class="planner-shell">
+        <div class="planner-scroll">
+          <div class="planner-weekdays">
+            <div>Segunda</div><div>Terça</div><div>Quarta</div><div>Quinta</div><div>Sexta</div><div>Sábado</div><div>Domingo</div>
+          </div>
+          <div id="plannerGrid" class="planner-grid"></div>
+        </div>
       </div>
     </section>
 
@@ -288,7 +354,15 @@
   </form>
 </div></div>
 
-<script src="masks.js?v=20260801-6"></script>
-<script src="app.js?v=20260801-6"></script>
+
+<!-- DETALHES DO PLANTÃO -->
+<div id="calendarDetailModal" class="modal"><div class="modal-card" style="width:min(620px,100%)">
+  <div class="modal-head"><h3>Detalhes do plantão</h3><button class="btn" data-close="calendarDetailModal">✕</button></div>
+  <div id="calendarDetailContent" class="detail-list"></div>
+  <div class="modal-actions"><button type="button" class="btn primary" data-close="calendarDetailModal">Fechar</button></div>
+</div></div>
+
+<script src="masks.js?v=20260801-8"></script>
+<script src="app.js?v=20260801-8"></script>
 </body>
 </html>
