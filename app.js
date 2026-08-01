@@ -93,8 +93,8 @@ function plannerEventHtml(shift){
 
   const planned=caregiverName(shift.planned_caregiver_id);
   const actual=caregiverName(shift.actual_caregiver_id);
-  const caregiverLine=isSupport?`${planned} → ${actual}`:actual;
-  const label=isSupport?'Suporte':labelTurn(shift.turn);
+  const caregiverLine=isSupport?`Previsto: ${planned}`:actual;
+  const label=isSupport?`Realizado: ${actual} · Suporte`:labelTurn(shift.turn);
 
   return `<button class="${classes.join(' ')}" onclick="openCalendarShift('${shift.id}')">
     <strong>${houseName(shift.house_id)}</strong>
@@ -322,14 +322,33 @@ async function generateAssignmentShifts(a,month){
   nextMonthDate.setDate(nextMonthDate.getDate()+1);
   const nextMonthStart=iso(nextMonthDate);
 
-  // Remove plantões automáticos normais equivalentes da mesma casa,
-  // cuidador, turno e período, mesmo que tenham sido gerados por vínculo antigo.
+  // Localiza previamente os suportes já existentes para esta escala no mês.
+  // Esses registros representam o mesmo plantão, mantendo:
+  // - planned_caregiver_id = cuidador fixo previsto
+  // - actual_caregiver_id = cuidador de suporte que realizou
+  const supportResult=await db
+    .from('shifts')
+    .select('id,assignment_id,shift_date,turn,shift_type')
+    .eq('assignment_id',a.id)
+    .eq('shift_type','support')
+    .gte('shift_date',monthStart)
+    .lt('shift_date',nextMonthStart);
+
+  if(supportResult.error){
+    alert('Erro ao consultar os suportes existentes: '+supportResult.error.message);
+    return false;
+  }
+
+  const protectedSupportKeys=new Set(
+    (supportResult.data||[]).map(x=>`${x.shift_date}|${x.turn}`)
+  );
+
+  // Remove somente os plantões automáticos normais desta escala.
+  // Os suportes permanecem intactos.
   const deleteResult=await db
     .from('shifts')
     .delete()
-    .eq('house_id',a.house_id)
-    .eq('planned_caregiver_id',a.caregiver_id)
-    .eq('turn',a.turn)
+    .eq('assignment_id',a.id)
     .eq('shift_type','normal')
     .gte('shift_date',monthStart)
     .lt('shift_date',nextMonthStart);
@@ -341,21 +360,27 @@ async function generateAssignmentShifts(a,month){
 
   const rows=[];
   for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
-    if(shouldGenerate(a,d)){
-      rows.push({
-        assignment_id:a.id,
-        shift_date:iso(d),
-        house_id:a.house_id,
-        planned_caregiver_id:a.caregiver_id,
-        actual_caregiver_id:a.caregiver_id,
-        turn:a.turn,
-        shift_type:'normal',
-        amount:a.amount,
-        status:'planned',
-        created_by:user.id,
-        updated_at:new Date().toISOString()
-      });
-    }
+    if(!shouldGenerate(a,d))continue;
+
+    const shiftDate=iso(d);
+    const uniqueKey=`${shiftDate}|${a.turn}`;
+
+    // Se houve substituição por suporte, não recria um plantão normal concorrente.
+    if(protectedSupportKeys.has(uniqueKey))continue;
+
+    rows.push({
+      assignment_id:a.id,
+      shift_date:shiftDate,
+      house_id:a.house_id,
+      planned_caregiver_id:a.caregiver_id,
+      actual_caregiver_id:a.caregiver_id,
+      turn:a.turn,
+      shift_type:'normal',
+      amount:a.amount,
+      status:'planned',
+      created_by:user.id,
+      updated_at:new Date().toISOString()
+    });
   }
 
   if(!rows.length)return true;
@@ -369,7 +394,6 @@ async function generateAssignmentShifts(a,month){
 
   return true;
 }
-
 
 async function generateAssignmentRange(assignment,endMonth){
   const firstMonth=assignment.start_date.slice(0,7);
