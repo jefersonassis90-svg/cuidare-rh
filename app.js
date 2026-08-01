@@ -213,60 +213,108 @@ function monthPeriod(month){
     label:new Date(year,monthNumber-1,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'})
   };
 }
+function paymentMethodText(){
+  return {pix:'PIX',transfer:'Transferência Bancária',cash:'Dinheiro'}[$('#receiptPaymentMethod')?.value]||'PIX';
+}
+function paymentCheckboxLine(){
+  const selected=$('#receiptPaymentMethod')?.value||'pix';
+  return `${selected==='pix'?'[X]':'[ ]'} PIX     ${selected==='transfer'?'[X]':'[ ]'} Transferência Bancária     ${selected==='cash'?'[X]':'[ ]'} Dinheiro`;
+}
 function receiptDocument(caregiverId,month,doc=null,addPage=false){
   if(!window.jspdf?.jsPDF)throw new Error('A biblioteca de PDF não foi carregada. Atualize a página com Ctrl + F5.');
   const row=calculateClosing(month).find(x=>x.caregiverId===caregiverId);
   const caregiver=caregivers.find(x=>x.id===caregiverId);
   if(!row||!caregiver)throw new Error('Não há fechamento para este cuidador no período.');
+
   const {jsPDF}=window.jspdf;
-  const pdf=doc||new jsPDF();
+  const pdf=doc||new jsPDF({unit:'mm',format:'a4'});
   if(addPage)pdf.addPage();
 
   const period=monthPeriod(month);
   const paymentDate=$('#receiptPaymentDate').value?dateBR($('#receiptPaymentDate').value):'____/____/________';
-  const documentNumber=caregiver.has_mei&&caregiver.cnpj?caregiver.cnpj:(caregiver.cpf||'Não informado');
-  const documentLabel=caregiver.has_mei&&caregiver.cnpj?'CNPJ':'CPF';
+  const isMei=Boolean(caregiver.has_mei&&caregiver.cnpj);
+  const title=isMei?'RECIBO DE PAGAMENTO DA PRESTAÇÃO DE SERVIÇO - MEI':'RECIBO DE PAGAMENTO DA PRESTAÇÃO DE SERVIÇO';
+  const cpf=caregiver.cpf||'Não informado';
+  const cnpj=isMei?caregiver.cnpj:'Não se aplica';
+
+  const left=18,right=192,width=174;
+  pdf.setDrawColor(30,30,30);
+  pdf.setLineWidth(.25);
+  pdf.rect(12,12,186,273);
 
   pdf.setFont('helvetica','bold');
-  pdf.setFontSize(16);
-  pdf.text('RECIBO DE PRESTAÇÃO DE SERVIÇOS',105,20,{align:'center'});
+  pdf.setFontSize(14);
+  pdf.text(title,105,23,{align:'center'});
+  pdf.line(18,28,192,28);
+
+  pdf.setFontSize(10.5);
+  pdf.text('Empresa:',left,38);
   pdf.setFont('helvetica','normal');
-  pdf.setFontSize(11);
+  pdf.text('Cuidare Boa Viagem',37,38);
+  pdf.setFont('helvetica','bold');
+  pdf.text('CNPJ:',120,38);
+  pdf.setFont('helvetica','normal');
+  pdf.text('28.919.122/0001-03',136,38);
 
-  const intro=`Recebi da Cuidare Home Care a importância de ${money(row.total)}, referente aos serviços prestados no período de ${period.start} a ${period.end}.`;
-  const lines=pdf.splitTextToSize(intro,175);
-  pdf.text(lines,18,35);
+  pdf.setFont('helvetica','bold');pdf.text('Prestador:',left,47);
+  pdf.setFont('helvetica','normal');pdf.text(caregiver.name,42,47);
+  pdf.setFont('helvetica','bold');pdf.text('CPF:',left,56);
+  pdf.setFont('helvetica','normal');pdf.text(cpf,31,56);
+  pdf.setFont('helvetica','bold');pdf.text('CNPJ:',105,56);
+  pdf.setFont('helvetica','normal');pdf.text(cnpj,121,56);
+  pdf.setFont('helvetica','bold');pdf.text('Período de Serviço:',left,65);
+  pdf.setFont('helvetica','normal');pdf.text(`${period.start} a ${period.end}`,60,65);
 
+  pdf.setFont('helvetica','bold');pdf.text('Descrição do Serviço Prestado:',left,76);
+  pdf.setFont('helvetica','normal');
+  const desc='Cuidados domiciliares e plantões de assistência, conforme datas de prestação definidas pelo(a) cuidador(a).';
+  pdf.text(pdf.splitTextToSize(desc,width),left,83);
+
+  pdf.setFont('helvetica','bold');pdf.text('Valor Bruto da Prestação de Serviço:',left,101);
+  pdf.setFontSize(12);pdf.text(money(row.total),92,101);
+
+  pdf.setFont('helvetica','normal');pdf.setFontSize(10.5);
+  const declaration=`Declaro, para os devidos fins, que recebi da empresa Cuidare Boa Viagem o valor acima descrito, referente a ${row.h12} plantão(ões) de 12 horas e ${row.h24} plantão(ões) de 24 horas, além dos deslocamentos, plantões alinhados e seus respectivos deslocamentos, serviços prestados conforme contrato de prestação de serviço firmado entre as partes.`;
+  const declLines=pdf.splitTextToSize(declaration,width);
+  pdf.text(declLines,left,114);
+
+  let tableY=114+declLines.length*5+5;
   const houseRows=Object.values(row.houses)
     .sort((a,b)=>houseName(a.houseId).localeCompare(houseName(b.houseId)))
     .map(h=>[houseName(h.houseId),String(h.h12),String(h.h24),money(h.total)]);
-
   pdf.autoTable({
-    startY:35+(lines.length*6)+8,
+    startY:tableY,
     head:[['Casa','Plantões 12h','Plantões 24h','Valor']],
     body:houseRows,
     foot:[['TOTAL',String(row.h12),String(row.h24),money(row.total)]],
     theme:'grid',
-    styles:{fontSize:10,cellPadding:3},
-    headStyles:{fillColor:[37,99,235]},
-    footStyles:{fillColor:[219,234,254],textColor:[23,35,60],fontStyle:'bold'}
+    margin:{left,right:18},
+    styles:{fontSize:9,cellPadding:2.4,lineColor:[100,100,100],lineWidth:.15},
+    headStyles:{fillColor:[235,240,248],textColor:[15,35,70],fontStyle:'bold'},
+    footStyles:{fillColor:[235,240,248],textColor:[15,35,70],fontStyle:'bold'}
   });
 
-  let y=pdf.lastAutoTable.finalY+14;
-  pdf.setFont('helvetica','bold');
-  pdf.text(`Plantões de 12 horas: ${row.h12}`,18,y);
-  pdf.text(`Plantões de 24 horas: ${row.h24}`,18,y+7);
-  pdf.text(`Valor total: ${money(row.total)}`,18,y+14);
-
+  let y=pdf.lastAutoTable.finalY+12;
+  pdf.setFont('helvetica','bold');pdf.setFontSize(10.5);
+  pdf.text('Forma de Pagamento:',left,y);
   pdf.setFont('helvetica','normal');
-  pdf.text(`Prestador(a): ${caregiver.name}`,18,y+28);
-  pdf.text(`${documentLabel}: ${documentNumber}`,18,y+35);
-  if(caregiver.pix_key)pdf.text(`PIX: ${caregiver.pix_key}`,18,y+42);
-  pdf.text(`Data do pagamento: ${paymentDate}`,18,y+49);
+  pdf.text(paymentCheckboxLine(),62,y);
+  pdf.setFont('helvetica','bold');pdf.text('Data do Pagamento:',left,y+10);
+  pdf.setFont('helvetica','normal');pdf.text(paymentDate,61,y+10);
 
-  pdf.line(45,y+78,165,y+78);
-  pdf.text(caregiver.name,105,y+85,{align:'center'});
-  pdf.text(`${documentLabel}: ${documentNumber}`,105,y+91,{align:'center'});
+  if(caregiver.pix_key){
+    pdf.setFont('helvetica','bold');pdf.text('Chave PIX:',112,y+10);
+    pdf.setFont('helvetica','normal');pdf.text(String(caregiver.pix_key),137,y+10);
+  }
+
+  y+=25;
+  pdf.setFont('helvetica','bold');pdf.text('Assinatura do Prestador:',left,y);
+  pdf.line(left,y+17,110,y+17);
+  pdf.setFont('helvetica','normal');pdf.text(caregiver.name,64,y+23,{align:'center'});
+  pdf.text(`CPF: ${cpf}`,64,y+29,{align:'center'});
+
+  pdf.setFont('helvetica','bold');pdf.text('Assinatura e Carimbo da Empresa:',left,y+44);
+  pdf.line(left,y+61,110,y+61);
 
   return pdf;
 }
@@ -283,7 +331,8 @@ function renderReceipts(){
   $('#receiptsBody').innerHTML=rows.length?rows.map(x=>{
     const c=caregivers.find(a=>a.id===x.caregiverId);
     const doc=c?.has_mei&&c?.cnpj?c.cnpj:(c?.cpf||'');
-    return`<tr><td>${caregiverName(x.caregiverId)}</td><td>${doc}</td><td>${x.h12}</td><td>${x.h24}</td><td><strong>${money(x.total)}</strong></td><td><button class="btn small" onclick="generateReceipt('${x.caregiverId}','${month}')">Baixar PDF</button></td></tr>`;
+    const type=c?.has_mei&&c?.cnpj?'MEI':'Sem MEI';
+    return`<tr><td>${caregiverName(x.caregiverId)}<br><small class="muted">${type}</small></td><td>${doc}</td><td>${x.h12}</td><td>${x.h24}</td><td><strong>${money(x.total)}</strong></td><td><button class="btn small" onclick="generateReceipt('${x.caregiverId}','${month}')">Baixar PDF</button></td></tr>`;
   }).join(''):'<tr><td colspan="6" class="empty">Nenhum recibo disponível no período.</td></tr>';
 }
 $('#receiptMonth').value=monthNow();
@@ -299,7 +348,6 @@ $('#generateAllReceiptsBtn').onclick=()=>{
     pdf.save(`Recibos_Cuidare_${month}.pdf`);
   }catch(error){alert(error.message)}
 };
-
 
 $('#loginForm').onsubmit=async e=>{e.preventDefault();$('#loginMsg').textContent='Entrando...';const{error}=await db.auth.signInWithPassword({email:$('#loginEmail').value.trim(),password:$('#loginPassword').value});$('#loginMsg').textContent=error?error.message:''};
 $('#logoutBtn').onclick=()=>db.auth.signOut();

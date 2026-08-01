@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cuidare RH</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=20260801-2"></script>
+  <script src="config.js?v=20260801-3"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <style>
@@ -140,6 +140,11 @@
         <div class="toolbar-group">
           <input id="receiptMonth" class="field" type="month" style="max-width:190px">
           <input id="receiptPaymentDate" class="field" type="date" style="max-width:190px" title="Data do pagamento">
+          <select id="receiptPaymentMethod" class="field" style="max-width:210px" title="Forma de pagamento">
+            <option value="pix">PIX</option>
+            <option value="transfer">Transferência Bancária</option>
+            <option value="cash">Dinheiro</option>
+          </select>
         </div>
         <button id="generateAllReceiptsBtn" class="btn primary">Gerar todos os recibos</button>
       </div>
@@ -227,7 +232,7 @@
   </div><div class="modal-actions"><button class="btn primary">Registrar suporte</button></div></form>
 </div></div>
 
-<script src="masks.js?v=20260801-2"></script>
-<script src="app.js?v=20260801-2"></script>
+<script src="masks.js?v=20260801-3"></script>
+<script src="app.js?v=20260801-3"></script>
 </body>
 </html>
