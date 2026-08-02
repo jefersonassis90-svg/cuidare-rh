@@ -1,7 +1,7 @@
 const cfg=window.APP_CONFIG||{};
 const db=window.supabase.createClient(cfg.SUPABASE_URL||'',cfg.SUPABASE_PUBLISHABLE_KEY||'');
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
-let user=null,caregivers=[],houses=[],assignments=[],shifts=[],advances=[],view='dashboard';
+let user=null,caregivers=[],houses=[],assignments=[],shifts=[],advances=[],receiptRecords=[],view='dashboard';
 
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const moneyToNumber=v=>window.Masks?.moneyToNumber(v)||Number(v||0);
@@ -22,40 +22,84 @@ $$('[data-close]').forEach(b=>b.onclick=()=>closeModal(b.dataset.close));
 
 async function loadAll(){
   sync('Sincronizando...');
-  const [cg,hs,as,sh,ad]=await Promise.all([
+  const [cg,hs,as,sh,ad,rr]=await Promise.all([
     db.from('caregivers').select('*').order('name'),
     db.from('houses').select('*').order('name'),
     db.from('caregiver_house_assignments').select('*').order('created_at'),
     db.from('shifts').select('*').order('shift_date',{ascending:false}),
-    db.from('caregiver_advances').select('*').order('advance_date',{ascending:false})
+    db.from('caregiver_advances').select('*').order('advance_date',{ascending:false}),
+    db.from('caregiver_receipts').select('*').order('issued_at',{ascending:false})
   ]);
-  for(const r of [cg,hs,as,sh,ad])if(r.error){sync('Erro');alert(r.error.message);return}
-  caregivers=cg.data||[];houses=hs.data||[];assignments=as.data||[];shifts=sh.data||[];advances=ad.data||[];
+  for(const r of [cg,hs,as,sh,ad,rr])if(r.error){sync('Erro');alert(r.error.message);return}
+  caregivers=cg.data||[];houses=hs.data||[];assignments=as.data||[];shifts=sh.data||[];advances=ad.data||[];receiptRecords=rr.data||[];
   sync('Sincronizado');render();
 }
 
 function setView(v){
   view=v;$$('.view').forEach(x=>x.classList.remove('active'));$('#'+v+'View').classList.add('active');
   $$('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.view===v));
-  $('#pageTitle').textContent={dashboard:'Dashboard',calendar:'Calendário de escalas',caregivers:'Cuidadores',houses:'Casas e escalas',supports:'Suportes',advances:'Adiantamentos',receipts:'Recibos'}[v];
+  $('#pageTitle').textContent={dashboard:'Dashboard',calendar:'Calendário de escalas',caregivers:'Cuidadores',houses:'Casas e escalas',supports:'Ocorrências',advances:'Adiantamentos',receipts:'Recibos'}[v];
 render();
 }
 $$('.nav button').forEach(b=>b.onclick=()=>setView(b.dataset.view));
 
-function render(){
-  const month=monthNow(),monthSupports=shifts.filter(x=>x.shift_date.startsWith(month)&&x.shift_type==='support');
-  $('#dashHouses').textContent=houses.filter(x=>x.status==='active').length;
-  $('#dashCaregivers').textContent=caregivers.filter(x=>x.status==='active').length;
-  $('#dashSupport').textContent=caregivers.filter(x=>x.status==='active'&&['support','both'].includes(x.work_type)).length;
-  $('#dashAssignments').textContent=assignments.filter(x=>x.status==='active').length;
-  $('#dashMonthSupports').textContent=monthSupports.length;
-  const todays=shifts.filter(x=>x.shift_date===todayISO());
-  $('#todayShifts').innerHTML=todays.length?todays.map(x=>`<p><strong>${houseName(x.house_id)}</strong> — previsto: ${caregiverName(x.planned_caregiver_id)}${x.shift_type==='support'?` · suporte: ${caregiverName(x.actual_caregiver_id)}`:x.shift_type==='swap'?` · troca, realizado por: ${caregiverName(x.actual_caregiver_id)}`:''} (${labelTurn(x.turn)})</p>`).join(''):'<div class="empty">Nenhuma escala gerada para hoje.</div>';
-  const monthShifts=shifts.filter(x=>x.shift_date.startsWith(month));
-  $('#monthSummary').innerHTML=`<p>Plantões previstos: <strong>${monthShifts.length}</strong></p><p>Substituições por suporte: <strong>${monthSupports.length}</strong></p><p>Folha estimada até hoje: <strong>${money(calculateClosing(month).reduce((a,b)=>a+b.total,0))}</strong></p>`;
-  renderCalendarFilters();renderCalendar();renderCaregivers();renderHouses();renderAssignments();renderSupports();renderAdvances();renderReceipts();
+function calculateProjectedPayroll(month){
+  return shifts
+    .filter(x=>x.shift_date.startsWith(month)&&!['cancelled','absence'].includes(x.status))
+    .reduce((total,shift)=>total+Number(shift.amount||0),0);
+}
+function receiptWasIssued(caregiverId,month){
+  return receiptRecords.some(x=>x.caregiver_id===caregiverId&&x.competence===month);
 }
 
+function render(){
+  const month=monthNow();
+  const today=todayISO();
+  const monthShifts=shifts.filter(x=>x.shift_date.startsWith(month));
+  const todays=shifts.filter(x=>x.shift_date===today);
+  const monthOccurrences=monthShifts.filter(x=>['support','swap'].includes(x.shift_type)||x.status==='absence');
+  const monthAdvances=advances
+    .filter(x=>x.competence===month)
+    .reduce((total,x)=>total+Number(x.amount||0),0);
+
+  const receiptRows=calculateClosing(month);
+  const issuedCount=receiptRows.filter(x=>receiptWasIssued(x.caregiverId,month)).length;
+  const pendingCount=Math.max(0,receiptRows.length-issuedCount);
+
+  $('#dashHouses').textContent=houses.filter(x=>x.status==='active').length;
+  $('#dashCaregivers').textContent=caregivers.filter(x=>x.status==='active').length;
+  $('#dashAssignments').textContent=assignments.filter(x=>x.status==='active').length;
+  $('#dashMonthOccurrences').textContent=monthOccurrences.length;
+
+  $('#dashProjectedPayroll').textContent=money(calculateProjectedPayroll(month));
+  $('#dashMonthAdvances').textContent=money(monthAdvances);
+  $('#dashReceiptsIssued').textContent=issuedCount;
+  $('#dashReceiptsPending').textContent=pendingCount;
+
+  $('#dashTodayShifts').textContent=todays.length;
+  $('#dashTodayAbsences').textContent=todays.filter(x=>x.status==='absence').length;
+  $('#dashTodaySwaps').textContent=todays.filter(x=>x.shift_type==='swap').length;
+  $('#dashTodaySupports').textContent=todays.filter(x=>x.shift_type==='support').length;
+
+  $('#todayShifts').innerHTML=todays.length
+    ?todays.map(x=>`<p><strong>${houseName(x.house_id)}</strong> — previsto: ${caregiverName(x.planned_caregiver_id)}${x.shift_type==='support'?` · suporte: ${caregiverName(x.actual_caregiver_id)}`:x.shift_type==='swap'?` · troca, realizado por: ${caregiverName(x.actual_caregiver_id)}`:''} (${labelTurn(x.turn)})</p>`).join('')
+    :'<div class="empty">Nenhuma escala gerada para hoje.</div>';
+
+  $('#monthSummary').innerHTML=`
+    <p>Plantões previstos: <strong>${monthShifts.length}</strong></p>
+    <p>Ocorrências: <strong>${monthOccurrences.length}</strong></p>
+    <p>Folha prevista: <strong>${money(calculateProjectedPayroll(month))}</strong></p>
+  `;
+
+  renderCalendarFilters();
+  renderCalendar();
+  renderCaregivers();
+  renderHouses();
+  renderAssignments();
+  renderSupports();
+  renderAdvances();
+  renderReceipts();
+}
 
 function renderCalendarFilters(){
   const selectedHouse=$('#calendarHouse')?.value||'';
@@ -898,12 +942,33 @@ function receiptDocument(caregiverId,month,doc=null,addPage=false){
 
   return pdf;
 }
-window.generateReceipt=(caregiverId,month)=>{
+async function markReceiptIssued(caregiverId,month){
+  const payload={
+    caregiver_id:caregiverId,
+    competence:month,
+    issued_at:new Date().toISOString(),
+    issued_by:user?.id||null,
+    payment_date:$('#receiptPaymentDate')?.value||null,
+    payment_method:$('#receiptPaymentMethod')?.value||'pix'
+  };
+
+  const result=await db
+    .from('caregiver_receipts')
+    .upsert(payload,{onConflict:'caregiver_id,competence'});
+
+  if(result.error)throw new Error('O PDF foi gerado, mas não foi possível registrar a emissão: '+result.error.message);
+}
+
+window.generateReceipt=async(caregiverId,month)=>{
   try{
     const pdf=receiptDocument(caregiverId,month);
     const caregiver=caregivers.find(x=>x.id===caregiverId);
     pdf.save(`Recibo_${caregiver.name.replace(/[^\wÀ-ÿ]+/g,'_')}_${month}.pdf`);
-  }catch(error){alert(error.message)}
+    await markReceiptIssued(caregiverId,month);
+    await loadAll();
+  }catch(error){
+    alert(error.message);
+  }
 };
 function renderReceipts(){
   const month=$('#receiptMonth').value||monthNow();
@@ -927,15 +992,26 @@ function renderReceipts(){
 $('#receiptMonth').value=monthNow();
 $('#receiptPaymentDate').value=todayISO();
 $('#receiptMonth').onchange=renderReceipts;
-$('#generateAllReceiptsBtn').onclick=()=>{
+$('#generateAllReceiptsBtn').onclick=async()=>{
   const month=$('#receiptMonth').value||monthNow();
   const rows=calculateClosing(month);
   if(!rows.length)return alert('Não há recibos para gerar neste período.');
+
   try{
     let pdf=null;
-    rows.forEach((row,index)=>{pdf=receiptDocument(row.caregiverId,month,pdf,index>0)});
+    rows.forEach((row,index)=>{
+      pdf=receiptDocument(row.caregiverId,month,pdf,index>0);
+    });
     pdf.save(`Recibos_Cuidare_${month}.pdf`);
-  }catch(error){alert(error.message)}
+
+    for(const row of rows){
+      await markReceiptIssued(row.caregiverId,month);
+    }
+
+    await loadAll();
+  }catch(error){
+    alert(error.message);
+  }
 };
 
 $('#loginForm').onsubmit=async e=>{e.preventDefault();$('#loginMsg').textContent='Entrando...';const{error}=await db.auth.signInWithPassword({email:$('#loginEmail').value.trim(),password:$('#loginPassword').value});$('#loginMsg').textContent=error?error.message:''};
