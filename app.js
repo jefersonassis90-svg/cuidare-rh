@@ -49,7 +49,7 @@ function render(){
   $('#dashAssignments').textContent=assignments.filter(x=>x.status==='active').length;
   $('#dashMonthSupports').textContent=monthSupports.length;
   const todays=shifts.filter(x=>x.shift_date===todayISO());
-  $('#todayShifts').innerHTML=todays.length?todays.map(x=>`<p><strong>${houseName(x.house_id)}</strong> — previsto: ${caregiverName(x.planned_caregiver_id)}${x.shift_type==='support'?` · suporte: ${caregiverName(x.actual_caregiver_id)}`:''} (${labelTurn(x.turn)})</p>`).join(''):'<div class="empty">Nenhuma escala gerada para hoje.</div>';
+  $('#todayShifts').innerHTML=todays.length?todays.map(x=>`<p><strong>${houseName(x.house_id)}</strong> — previsto: ${caregiverName(x.planned_caregiver_id)}${x.shift_type==='support'?` · suporte: ${caregiverName(x.actual_caregiver_id)}`:x.shift_type==='swap'?` · troca, realizado por: ${caregiverName(x.actual_caregiver_id)}`:''} (${labelTurn(x.turn)})</p>`).join(''):'<div class="empty">Nenhuma escala gerada para hoje.</div>';
   const monthShifts=shifts.filter(x=>x.shift_date.startsWith(month));
   $('#monthSummary').innerHTML=`<p>Plantões previstos: <strong>${monthShifts.length}</strong></p><p>Substituições por suporte: <strong>${monthSupports.length}</strong></p><p>Folha estimada até hoje: <strong>${money(calculateClosing(month).reduce((a,b)=>a+b.total,0))}</strong></p>`;
   renderCalendarFilters();renderCalendar();renderCaregivers();renderHouses();renderAssignments();renderSupports();renderAdvances();renderReceipts();
@@ -80,21 +80,28 @@ function calendarShiftMatches(shift){
   if(houseId&&shift.house_id!==houseId)return false;
   if(caregiverId&&shift.planned_caregiver_id!==caregiverId&&shift.actual_caregiver_id!==caregiverId)return false;
   if(type==='support'&&shift.shift_type!=='support')return false;
+  if(type==='swap'&&shift.shift_type!=='swap')return false;
   if(type==='24h'&&shift.turn!=='24h')return false;
   if(type==='12h'&&shift.turn==='24h')return false;
   return true;
 }
 function plannerEventHtml(shift){
   const isSupport=shift.shift_type==='support';
+  const isSwap=shift.shift_type==='swap';
   const is24=shift.turn==='24h';
   const classes=['planner-event'];
   if(isSupport)classes.push('support');
+  else if(isSwap)classes.push('swap');
   else if(is24)classes.push('hours24');
 
   const planned=caregiverName(shift.planned_caregiver_id);
   const actual=caregiverName(shift.actual_caregiver_id);
-  const caregiverLine=isSupport?`Previsto: ${planned}`:actual;
-  const label=isSupport?`Realizado: ${actual} · Suporte`:labelTurn(shift.turn);
+  const caregiverLine=(isSupport||isSwap)?`Previsto: ${planned}`:actual;
+  const label=isSupport
+    ?`Realizado: ${actual} · Suporte`
+    :isSwap
+      ?`Realizado: ${actual} · Troca`
+      :labelTurn(shift.turn);
 
   return `<button class="${classes.join(' ')}" onclick="openCalendarShift('${shift.id}')">
     <strong>${houseName(shift.house_id)}</strong>
@@ -170,13 +177,14 @@ window.openCalendarShift=id=>{
   if(!shift)return;
 
   const isSupport=shift.shift_type==='support';
+  const isSwap=shift.shift_type==='swap';
   const fields=[
     ['Data',dateBR(shift.shift_date)],
     ['Casa',houseName(shift.house_id)],
     ['Turno',labelTurn(shift.turn)],
     ['Cuidador previsto',caregiverName(shift.planned_caregiver_id)],
     ['Cuidador realizado',caregiverName(shift.actual_caregiver_id)],
-    ['Tipo',isSupport?'Substituição por suporte':'Plantão normal'],
+    ['Tipo',isSupport?'Substituição por suporte':isSwap?'Troca de plantão':'Plantão normal'],
     ['Valor',money(shift.amount)],
     ['Status',labelStatus(shift.status)],
     ['Observação',shift.notes||'Sem observações']
@@ -255,40 +263,7 @@ $('#assignmentForm').onsubmit=async e=>{
   closeModal('assignmentModal');
   loadAll();
 };
-$('#deleteAssignmentBtn').onclick=async()=>{
-  const id=$('#assignmentId').value;
-  if(!id)return;
-
-  const assignment=assignments.find(x=>x.id===id);
-  const message='Excluir esta escala fixa? Todos os plantões gerados por ela, inclusive substituições por suporte, serão removidos do calendário, dashboard e recibos.';
-  if(!confirm(message))return;
-
-  sync('Excluindo escala...');
-
-  const shiftsResult=await db
-    .from('shifts')
-    .delete()
-    .eq('assignment_id',id);
-
-  if(shiftsResult.error){
-    sync('Erro');
-    return alert('Erro ao excluir os plantões da escala: '+shiftsResult.error.message);
-  }
-
-  const assignmentResult=await db
-    .from('caregiver_house_assignments')
-    .delete()
-    .eq('id',id);
-
-  if(assignmentResult.error){
-    sync('Erro');
-    return alert('Os plantões foram removidos, mas ocorreu erro ao excluir o vínculo: '+assignmentResult.error.message);
-  }
-
-  closeModal('assignmentModal');
-  await loadAll();
-  alert(`Escala excluída com sucesso${assignment?.caregiver_id?` para ${caregiverName(assignment.caregiver_id)}`:''}.`);
-};
+$('#deleteAssignmentBtn').onclick=async()=>{const id=$('#assignmentId').value;if(confirm('Excluir vínculo? Os plantões já gerados permanecerão para histórico.')){const r=await db.from('caregiver_house_assignments').delete().eq('id',id);if(r.error)return alert(r.error.message);closeModal('assignmentModal');loadAll()}};
 $('#generateAllBtn').onclick=async()=>{
   const m=$('#assignmentMonth').value||monthNow();
   const activeAssignments=assignments.filter(x=>x.status==='active');
@@ -363,7 +338,7 @@ async function generateAssignmentShifts(a,month){
     .from('shifts')
     .select('id,assignment_id,shift_date,turn,shift_type')
     .eq('assignment_id',a.id)
-    .eq('shift_type','support')
+    .in('shift_type',['support','swap'])
     .gte('shift_date',monthStart)
     .lt('shift_date',nextMonthStart);
 
@@ -448,32 +423,203 @@ async function generateAssignmentRange(assignment,endMonth){
 
 function fillSupportSelects(){
   $('#spHouse').innerHTML=houses.filter(x=>x.status==='active').map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
-  $('#spSupportCaregiver').innerHTML=caregivers.filter(x=>x.status==='active'&&['support','both'].includes(x.work_type)).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+  $('#spSupportCaregiver').innerHTML=caregivers.filter(x=>x.status==='active'&&['support','both','fixed'].includes(x.work_type)).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+}
+async function findShift(date,house,turn){
+  if(!date||!house||!turn)return null;
+  const {data,error}=await db
+    .from('shifts')
+    .select('*')
+    .eq('shift_date',date)
+    .eq('house_id',house)
+    .eq('turn',turn)
+    .maybeSingle();
+  if(error)throw error;
+  return data||null;
 }
 async function locateFixedShift(){
   const date=$('#spDate').value,house=$('#spHouse').value,turn=$('#spTurn').value;
   if(!date||!house)return;
-  const {data,error}=await db.from('shifts').select('*').eq('shift_date',date).eq('house_id',house).eq('turn',turn).maybeSingle();
-  if(error)return alert(error.message);
-  $('#supportShiftId').value=data?.id||'';$('#spFixedName').value=data?caregiverName(data.planned_caregiver_id):'Nenhuma escala fixa encontrada';
-  if(data)$('#spAmount').value=window.Masks.formatMoneyFromNumber(data.amount);
+  try{
+    const data=await findShift(date,house,turn);
+    $('#supportShiftId').value=data?.id||'';
+    $('#spFixedName').value=data?caregiverName(data.planned_caregiver_id):'Nenhuma escala fixa encontrada';
+    if(data)$('#spAmount').value=window.Masks.formatMoneyFromNumber(data.amount);
+  }catch(error){alert(error.message)}
 }
-['spDate','spHouse','spTurn'].forEach(id=>$('#'+id).onchange=locateFixedShift);
-$('#supportMonth').value=monthNow();$('#supportMonth').onchange=renderSupports;
-$('#newSupportBtn').onclick=()=>{fillSupportSelects();$('#supportShiftId').value='';$('#spDate').value=todayISO();$('#spTurn').value='day';$('#spReason').value='';$('#spNotes').value='';$('#spFixedName').value='';$('#spAmount').value='';window.Masks.refresh();openModal('supportModal');locateFixedShift()};
+async function locateSecondSwapShift(){
+  const date=$('#swapSecondDate').value,house=$('#spHouse').value,turn=$('#swapSecondTurn').value;
+  if(!date||!house)return;
+  try{
+    const data=await findShift(date,house,turn);
+    $('#swapSecondShiftId').value=data?.id||'';
+    $('#swapSecondFixedName').value=data?caregiverName(data.planned_caregiver_id):'Nenhuma escala fixa encontrada';
+  }catch(error){alert(error.message)}
+}
+function toggleOccurrenceFields(){
+  const isSwap=$('#spOccurrenceType').value==='swap';
+  $('#swapFields').classList.toggle('hidden',!isSwap);
+  $('#supportCaregiverGroup').classList.toggle('hidden',isSwap);
+  $('#swapSecondDate').required=isSwap;
+  if(isSwap)locateSecondSwapShift();
+}
+['spDate','spHouse','spTurn'].forEach(id=>$('#'+id).onchange=()=>{
+  locateFixedShift();
+  if($('#spOccurrenceType').value==='swap')locateSecondSwapShift();
+});
+['swapSecondDate','swapSecondTurn'].forEach(id=>$('#'+id).onchange=locateSecondSwapShift);
+$('#spOccurrenceType').onchange=toggleOccurrenceFields;
+$('#supportMonth').value=monthNow();
+$('#supportMonth').onchange=renderSupports;
+$('#newSupportBtn').onclick=()=>{
+  fillSupportSelects();
+  $('#supportShiftId').value='';
+  $('#swapSecondShiftId').value='';
+  $('#spOccurrenceType').value='support';
+  $('#spDate').value=todayISO();
+  $('#spTurn').value='day';
+  $('#swapSecondDate').value='';
+  $('#swapSecondTurn').value='day';
+  $('#spReason').value='';
+  $('#spNotes').value='';
+  $('#spFixedName').value='';
+  $('#swapSecondFixedName').value='';
+  $('#spAmount').value='';
+  toggleOccurrenceFields();
+  window.Masks.refresh();
+  openModal('supportModal');
+  locateFixedShift();
+};
 $('#supportForm').onsubmit=async e=>{
-  e.preventDefault();const id=$('#supportShiftId').value;if(!id)return alert('Não existe escala fixa para esta casa, data e turno. Gere a escala da casa primeiro.');
-  const original=shifts.find(x=>x.id===id);const reason=$('#spReason').value.trim(),notes=$('#spNotes').value.trim();
-  const p={actual_caregiver_id:$('#spSupportCaregiver').value,shift_type:'support',amount:moneyToNumber($('#spAmount').value),status:'completed',notes:`Motivo do suporte: ${reason}${notes?` | ${notes}`:''}`,updated_at:new Date().toISOString()};
-  const r=await db.from('shifts').update(p).eq('id',id);if(r.error)return alert(r.error.message);
-  closeModal('supportModal');loadAll();
+  e.preventDefault();
+  const occurrenceType=$('#spOccurrenceType').value;
+  const firstId=$('#supportShiftId').value;
+
+  if(!firstId)return alert('Não existe escala fixa para a primeira casa, data e turno.');
+
+  const firstShift=shifts.find(x=>x.id===firstId);
+  if(!firstShift)return alert('Primeiro plantão não localizado. Atualize a página e tente novamente.');
+
+  const reason=$('#spReason').value.trim();
+  const extraNotes=$('#spNotes').value.trim();
+  const notes=`Motivo: ${reason}${extraNotes?` | ${extraNotes}`:''}`;
+
+  if(occurrenceType==='support'){
+    const supportId=$('#spSupportCaregiver').value;
+    if(!supportId)return alert('Selecione a cuidadora de suporte.');
+
+    const result=await db.from('shifts').update({
+      actual_caregiver_id:supportId,
+      shift_type:'support',
+      swap_group_id:null,
+      amount:moneyToNumber($('#spAmount').value),
+      status:'completed',
+      notes,
+      updated_at:new Date().toISOString()
+    }).eq('id',firstId);
+
+    if(result.error)return alert(result.error.message);
+  }else{
+    const secondId=$('#swapSecondShiftId').value;
+    if(!secondId)return alert('Não existe escala fixa para a segunda data e turno.');
+    if(firstId===secondId)return alert('Selecione dois plantões diferentes para realizar a troca.');
+
+    const secondShift=shifts.find(x=>x.id===secondId);
+    if(!secondShift)return alert('Segundo plantão não localizado. Atualize a página e tente novamente.');
+    if(firstShift.house_id!==secondShift.house_id)return alert('A troca deve ocorrer entre plantões da mesma casa.');
+    if(firstShift.planned_caregiver_id===secondShift.planned_caregiver_id)return alert('Os dois plantões precisam pertencer a cuidadoras diferentes.');
+
+    const groupId=crypto.randomUUID();
+
+    const firstResult=await db.from('shifts').update({
+      actual_caregiver_id:secondShift.planned_caregiver_id,
+      shift_type:'swap',
+      swap_group_id:groupId,
+      status:'completed',
+      notes:`Troca com ${caregiverName(secondShift.planned_caregiver_id)} | ${notes}`,
+      updated_at:new Date().toISOString()
+    }).eq('id',firstId);
+
+    if(firstResult.error)return alert(firstResult.error.message);
+
+    const secondResult=await db.from('shifts').update({
+      actual_caregiver_id:firstShift.planned_caregiver_id,
+      shift_type:'swap',
+      swap_group_id:groupId,
+      status:'completed',
+      notes:`Troca com ${caregiverName(firstShift.planned_caregiver_id)} | ${notes}`,
+      updated_at:new Date().toISOString()
+    }).eq('id',secondId);
+
+    if(secondResult.error){
+      await db.from('shifts').update({
+        actual_caregiver_id:firstShift.planned_caregiver_id,
+        shift_type:'normal',
+        swap_group_id:null,
+        status:'planned',
+        notes:null,
+        updated_at:new Date().toISOString()
+      }).eq('id',firstId);
+      return alert(secondResult.error.message);
+    }
+  }
+
+  closeModal('supportModal');
+  loadAll();
 };
 function renderSupports(){
-  const m=$('#supportMonth').value||monthNow(),list=shifts.filter(x=>x.shift_date.startsWith(m)&&x.shift_type==='support');
-  $('#supportsBody').innerHTML=list.length?list.map(x=>`<tr><td>${dateBR(x.shift_date)}</td><td>${houseName(x.house_id)}</td><td>${caregiverName(x.planned_caregiver_id)}</td><td>${caregiverName(x.actual_caregiver_id)}</td><td>${labelTurn(x.turn)}</td><td>${money(x.amount)}</td><td>${(x.notes||'').replace('Motivo do suporte: ','')}</td><td><button class="btn small" onclick="undoSupport('${x.id}')">Desfazer</button></td></tr>`).join(''):'<tr><td colspan="8" class="empty">Nenhum suporte registrado no período.</td></tr>';
-}
-window.undoSupport=async id=>{if(!confirm('Desfazer suporte e devolver o plantão ao cuidador fixo?'))return;const s=shifts.find(x=>x.id===id);const r=await db.from('shifts').update({actual_caregiver_id:s.planned_caregiver_id,shift_type:'normal',amount:assignments.find(a=>a.id===s.assignment_id)?.amount||s.amount,status:'planned',notes:null,updated_at:new Date().toISOString()}).eq('id',id);if(r.error)return alert(r.error.message);loadAll()};
+  const month=$('#supportMonth').value||monthNow();
+  const list=shifts.filter(x=>x.shift_date.startsWith(month)&&['support','swap'].includes(x.shift_type));
 
+  $('#supportsBody').innerHTML=list.length?list.map(x=>`<tr>
+    <td>${x.shift_type==='swap'?badge('Troca','ok'):badge('Suporte','warn')}</td>
+    <td>${dateBR(x.shift_date)}</td>
+    <td>${houseName(x.house_id)}</td>
+    <td>${caregiverName(x.planned_caregiver_id)}</td>
+    <td>${caregiverName(x.actual_caregiver_id)}</td>
+    <td>${labelTurn(x.turn)}</td>
+    <td>${money(x.amount)}</td>
+    <td>${(x.notes||'').replace('Motivo: ','').replace('Motivo do suporte: ','')}</td>
+    <td><button class="btn small" onclick="${x.shift_type==='swap'?`undoSwap('${x.swap_group_id}')`:`undoSupport('${x.id}')`}">Desfazer</button></td>
+  </tr>`).join(''):'<tr><td colspan="9" class="empty">Nenhuma ocorrência registrada no período.</td></tr>';
+}
+window.undoSupport=async id=>{
+  if(!confirm('Desfazer suporte e devolver o plantão à cuidadora fixa?'))return;
+  const shift=shifts.find(x=>x.id===id);
+  const result=await db.from('shifts').update({
+    actual_caregiver_id:shift.planned_caregiver_id,
+    shift_type:'normal',
+    swap_group_id:null,
+    amount:assignments.find(a=>a.id===shift.assignment_id)?.amount||shift.amount,
+    status:'planned',
+    notes:null,
+    updated_at:new Date().toISOString()
+  }).eq('id',id);
+  if(result.error)return alert(result.error.message);
+  loadAll();
+};
+window.undoSwap=async groupId=>{
+  if(!groupId)return alert('Esta troca não possui identificação para ser desfeita.');
+  if(!confirm('Desfazer os dois plantões desta troca?'))return;
+
+  const pair=shifts.filter(x=>x.swap_group_id===groupId);
+  if(!pair.length)return alert('Os plantões desta troca não foram encontrados.');
+
+  for(const shift of pair){
+    const result=await db.from('shifts').update({
+      actual_caregiver_id:shift.planned_caregiver_id,
+      shift_type:'normal',
+      swap_group_id:null,
+      status:'planned',
+      notes:null,
+      updated_at:new Date().toISOString()
+    }).eq('id',shift.id);
+
+    if(result.error)return alert(result.error.message);
+  }
+
+  loadAll();
+};
 
 const ADVANCE_MONTHLY_REFERENCE=200;
 const paymentMethodLabel=v=>({pix:'PIX',transfer:'Transferência Bancária',cash:'Dinheiro'}[v]||v);
@@ -578,7 +724,7 @@ function calculateClosing(month){
   const today=todayISO(),list=shifts.filter(x=>x.shift_date.startsWith(month)&&x.shift_date<=today&&!['cancelled','absence'].includes(x.status));
   const map={};
   for(const s of list){
-    const id=s.actual_caregiver_id;if(!id)continue;
+    const id=s.shift_type==='swap'?s.planned_caregiver_id:s.actual_caregiver_id;if(!id)continue;
     if(!map[id])map[id]={caregiverId:id,h12:0,h24:0,count:0,total:0,houses:{}};
     const houseId=s.house_id;
     if(!map[id].houses[houseId])map[id].houses[houseId]={houseId,h12:0,h24:0,total:0};

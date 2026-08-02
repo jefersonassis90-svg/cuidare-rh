@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cuidare RH</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=20260802-12"></script>
+  <script src="config.js?v=20260802-13"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <style>
@@ -52,7 +52,7 @@
     .planner-filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     .planner-legend{display:flex;gap:12px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:13px}
     .legend-dot{width:11px;height:11px;border-radius:50%;display:inline-block;margin-right:5px}
-    .legend-normal{background:#3b82f6}.legend-support{background:#f59e0b}.legend-24h{background:#8b5cf6}
+    .legend-normal{background:#3b82f6}.legend-support{background:#f59e0b}.legend-swap{background:#10b981}.legend-24h{background:#8b5cf6}
     .planner-shell{background:var(--panel);border:1px solid var(--border);border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
     .planner-weekdays{display:grid;grid-template-columns:repeat(7,minmax(140px,1fr));background:#eff6ff;border-bottom:1px solid var(--border);min-width:980px}
     .planner-weekdays div{padding:12px;text-align:center;font-size:12px;font-weight:700;color:#34517e;text-transform:uppercase;letter-spacing:.05em}
@@ -69,6 +69,7 @@
     .planner-event{border:0;border-left:4px solid #3b82f6;background:#eff6ff;border-radius:9px;padding:7px 8px;text-align:left;cursor:pointer;color:var(--text);width:100%;font-size:12px}
     .planner-event:hover{filter:brightness(.98);transform:translateY(-1px)}
     .planner-event.support{border-left-color:#f59e0b;background:#fffbeb}
+    .planner-event.swap{border-left-color:#10b981;background:#ecfdf5}
     .planner-event.hours24{border-left-color:#8b5cf6;background:#f5f3ff}
     .planner-event strong,.planner-event small{display:block}.planner-event small{color:var(--muted);margin-top:2px}
     .planner-empty{padding:48px;text-align:center;color:var(--muted)}
@@ -146,11 +147,13 @@
             <option value="12h">Plantões de 12h</option>
             <option value="24h">Plantões de 24h</option>
             <option value="support">Somente suportes</option>
+            <option value="swap">Somente trocas</option>
           </select>
         </div>
         <div class="planner-legend">
           <span><i class="legend-dot legend-normal"></i>Plantão normal</span>
           <span><i class="legend-dot legend-support"></i>Suporte</span>
+          <span><i class="legend-dot legend-swap"></i>Troca</span>
           <span><i class="legend-dot legend-24h"></i>24 horas</span>
         </div>
       </div>
@@ -191,9 +194,9 @@
         <button id="newSupportBtn" class="btn primary">+ Registrar suporte</button>
       </div>
       <div class="info-box" style="margin-bottom:14px">
-        Ao registrar um suporte, o sistema localiza automaticamente o cuidador fixo previsto para a casa, data e turno.
+        Registre uma substituição por suporte ou uma troca de plantões entre cuidadoras da mesma casa. Trocas alteram somente o calendário; o financeiro permanece com as cuidadoras originalmente escaladas.
       </div>
-      <div class="table-wrap"><table><thead><tr><th>Data</th><th>Casa</th><th>Cuidador fixo</th><th>Cuidador de suporte</th><th>Turno</th><th>Valor</th><th>Motivo</th><th></th></tr></thead><tbody id="supportsBody"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Data</th><th>Casa</th><th>Previsto</th><th>Realizado</th><th>Turno</th><th>Valor</th><th>Motivo</th><th></th></tr></thead><tbody id="supportsBody"></tbody></table></div>
     </section>
 
 
@@ -310,19 +313,46 @@
   </div><div class="modal-actions"><button type="button" id="deleteAssignmentBtn" class="btn danger">Excluir</button><button class="btn primary">Salvar e gerar escalas automaticamente</button></div></form>
 </div></div>
 
-<!-- SUPORTE -->
+<!-- SUPORTE / TROCA -->
 <div id="supportModal" class="modal"><div class="modal-card">
-  <div class="modal-head"><h3>Registrar substituição por suporte</h3><button class="btn" data-close="supportModal">✕</button></div>
-  <form id="supportForm"><input id="supportShiftId" type="hidden"><div class="form-grid">
-    <div class="form-group"><label>Data do plantão</label><input id="spDate" class="field" type="date" required></div>
-    <div class="form-group"><label>Casa</label><select id="spHouse" class="field" required></select></div>
-    <div class="form-group"><label>Turno</label><select id="spTurn" class="field"><option value="day">Diurno</option><option value="night">Noturno</option><option value="24h">24 horas</option></select></div>
-    <div class="form-group"><label>Cuidador fixo previsto</label><input id="spFixedName" class="field" readonly placeholder="Será localizado automaticamente"></div>
-    <div class="form-group"><label>Cuidador de suporte</label><select id="spSupportCaregiver" class="field" required></select></div>
-    <div class="form-group"><label>Valor do suporte</label><input id="spAmount" class="field" inputmode="numeric" placeholder="R$ 0,00" required></div>
-    <div class="form-group full"><label>Motivo da substituição</label><input id="spReason" class="field" required placeholder="Falta, atestado, indisponibilidade..."></div>
-    <div class="form-group full"><label>Observações</label><textarea id="spNotes" class="field"></textarea></div>
-  </div><div class="modal-actions"><button class="btn primary">Registrar suporte</button></div></form>
+  <div class="modal-head"><h3>Registrar ocorrência de plantão</h3><button class="btn" data-close="supportModal">✕</button></div>
+  <form id="supportForm">
+    <input id="supportShiftId" type="hidden">
+    <input id="swapSecondShiftId" type="hidden">
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Tipo de ocorrência</label>
+        <select id="spOccurrenceType" class="field">
+          <option value="support">Substituição por suporte</option>
+          <option value="swap">Troca de plantão entre cuidadoras</option>
+        </select>
+      </div>
+
+      <div class="form-group"><label>Casa</label><select id="spHouse" class="field" required></select></div>
+      <div class="form-group"><label>Primeira data</label><input id="spDate" class="field" type="date" required></div>
+      <div class="form-group"><label>Primeiro turno</label><select id="spTurn" class="field"><option value="day">Diurno</option><option value="night">Noturno</option><option value="24h">24 horas</option></select></div>
+      <div class="form-group"><label>Cuidadora prevista</label><input id="spFixedName" class="field" readonly placeholder="Será localizada automaticamente"></div>
+
+      <div id="supportCaregiverGroup" class="form-group full">
+        <label>Cuidadora de suporte</label>
+        <select id="spSupportCaregiver" class="field"></select>
+      </div>
+
+      <div id="swapFields" class="form-grid full hidden">
+        <div class="form-group"><label>Segunda data</label><input id="swapSecondDate" class="field" type="date"></div>
+        <div class="form-group"><label>Segundo turno</label><select id="swapSecondTurn" class="field"><option value="day">Diurno</option><option value="night">Noturno</option><option value="24h">24 horas</option></select></div>
+        <div class="form-group full"><label>Outra cuidadora prevista</label><input id="swapSecondFixedName" class="field" readonly placeholder="Será localizada automaticamente"></div>
+        <div class="info-box full">
+          Na troca, cada cuidadora realizará o plantão da outra. O pagamento continuará vinculado às escalas originais.
+        </div>
+      </div>
+
+      <div class="form-group"><label>Valor do plantão</label><input id="spAmount" class="field" inputmode="numeric" placeholder="R$ 0,00" required></div>
+      <div class="form-group full"><label>Motivo</label><input id="spReason" class="field" required placeholder="Troca acordada, falta, atestado..."></div>
+      <div class="form-group full"><label>Observações</label><textarea id="spNotes" class="field"></textarea></div>
+    </div>
+    <div class="modal-actions"><button class="btn primary">Registrar ocorrência</button></div>
+  </form>
 </div></div>
 
 
@@ -362,7 +392,7 @@
   <div class="modal-actions"><button type="button" class="btn primary" data-close="calendarDetailModal">Fechar</button></div>
 </div></div>
 
-<script src="masks.js?v=20260802-12"></script>
-<script src="app.js?v=20260802-12"></script>
+<script src="masks.js?v=20260802-13"></script>
+<script src="app.js?v=20260802-13"></script>
 </body>
 </html>
