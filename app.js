@@ -255,7 +255,40 @@ $('#assignmentForm').onsubmit=async e=>{
   closeModal('assignmentModal');
   loadAll();
 };
-$('#deleteAssignmentBtn').onclick=async()=>{const id=$('#assignmentId').value;if(confirm('Excluir vínculo? Os plantões já gerados permanecerão para histórico.')){const r=await db.from('caregiver_house_assignments').delete().eq('id',id);if(r.error)return alert(r.error.message);closeModal('assignmentModal');loadAll()}};
+$('#deleteAssignmentBtn').onclick=async()=>{
+  const id=$('#assignmentId').value;
+  if(!id)return;
+
+  const assignment=assignments.find(x=>x.id===id);
+  const message='Excluir esta escala fixa? Todos os plantões gerados por ela, inclusive substituições por suporte, serão removidos do calendário, dashboard e recibos.';
+  if(!confirm(message))return;
+
+  sync('Excluindo escala...');
+
+  const shiftsResult=await db
+    .from('shifts')
+    .delete()
+    .eq('assignment_id',id);
+
+  if(shiftsResult.error){
+    sync('Erro');
+    return alert('Erro ao excluir os plantões da escala: '+shiftsResult.error.message);
+  }
+
+  const assignmentResult=await db
+    .from('caregiver_house_assignments')
+    .delete()
+    .eq('id',id);
+
+  if(assignmentResult.error){
+    sync('Erro');
+    return alert('Os plantões foram removidos, mas ocorreu erro ao excluir o vínculo: '+assignmentResult.error.message);
+  }
+
+  closeModal('assignmentModal');
+  await loadAll();
+  alert(`Escala excluída com sucesso${assignment?.caregiver_id?` para ${caregiverName(assignment.caregiver_id)}`:''}.`);
+};
 $('#generateAllBtn').onclick=async()=>{
   const m=$('#assignmentMonth').value||monthNow();
   const activeAssignments=assignments.filter(x=>x.status==='active');
