@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cuidare RH</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=20260802-13"></script>
+  <script src="config.js?v=20260802-14"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <style>
@@ -297,7 +297,7 @@
   <form id="assignmentForm"><input id="assignmentId" type="hidden"><div class="form-grid">
     <div class="form-group"><label>Casa</label><select id="asHouse" class="field" required></select></div>
     <div class="form-group"><label>Cuidador fixo</label><select id="asCaregiver" class="field" required></select></div>
-    <div class="form-group"><label>Tipo de escala</label><select id="asScheduleType" class="field"><option value="12x36">12x36</option><option value="daily">Todos os dias</option><option value="weekdays">Dias da semana</option></select></div>
+    <div class="form-group"><label>Tipo de escala</label><select id="asScheduleType" class="field"><option value="12x36">12x36</option><option value="24x24">24x24</option><option value="24x24_weekdays">24x24 — segunda a sexta</option><option value="48x96">48x96</option><option value="daily">Todos os dias</option><option value="weekdays">Dias da semana</option></select></div>
     <div class="form-group"><label>Turno</label><select id="asTurn" class="field"><option value="day">Diurno</option><option value="night">Noturno</option><option value="24h">24 horas</option></select></div>
     <div class="form-group"><label>Valor por plantão</label><input id="asAmount" class="field" inputmode="numeric" placeholder="R$ 0,00" required></div>
     <div class="form-group"><label>Data inicial</label><input id="asStartDate" class="field" type="date" required></div>
@@ -392,7 +392,7 @@
   <div class="modal-actions"><button type="button" class="btn primary" data-close="calendarDetailModal">Fechar</button></div>
 </div></div>
 
-<script src="masks.js?v=20260802-13"></script>
-<script src="app.js?v=20260802-13"></script>
+<script src="masks.js?v=20260802-14"></script>
+<script src="app.js?v=20260802-14"></script>
 </body>
 </html>

@@ -11,7 +11,7 @@ const todayISO=()=>new Date().toISOString().slice(0,10);
 const labelType=v=>({fixed:'Fixo',support:'Suporte',both:'Fixo e suporte'}[v]||v);
 const labelStatus=v=>({active:'Ativo',away:'Afastado',inactive:'Inativo',planned:'Previsto',completed:'Realizado',absence:'Falta',cancelled:'Cancelado'}[v]||v);
 const labelTurn=v=>({day:'Diurno',night:'Noturno','24h':'24 horas'}[v]||v);
-const labelSchedule=v=>({'12x36':'12x36',daily:'Todos os dias',weekdays:'Dias da semana'}[v]||v);
+const labelSchedule=v=>({'12x36':'12x36','24x24':'24x24','24x24_weekdays':'24x24 — segunda a sexta','48x96':'48x96',daily:'Todos os dias',weekdays:'Dias da semana'}[v]||v);
 const badge=(text,kind='')=>`<span class="badge ${kind}">${text}</span>`;
 const sync=t=>$('#syncState').textContent=t;
 const caregiverName=id=>caregivers.find(x=>x.id===id)?.name||'-';
@@ -242,18 +242,33 @@ function renderAssignments(){
   $('#assignmentsBody').innerHTML=assignments.length?assignments.map(x=>`<tr><td>${houseName(x.house_id)}</td><td>${caregiverName(x.caregiver_id)}</td><td>${labelSchedule(x.schedule_type)}</td><td>${labelTurn(x.turn)}</td><td>${money(x.amount)}</td><td>${dateBR(x.start_date)}</td><td>${badge(labelStatus(x.status),x.status==='active'?'ok':'warn')}</td><td><button class="btn small" onclick="editAssignment('${x.id}')">Editar</button></td></tr>`).join(''):'<tr><td colspan="8" class="empty">Nenhuma escala fixa cadastrada.</td></tr>';
 }
 $('#assignmentMonth').value=monthNow();
-$('#asScheduleType').onchange=()=>$('#weekdaysGroup').classList.toggle('hidden',$('#asScheduleType').value!=='weekdays');
+function updateScheduleFields(){
+  const scheduleType=$('#asScheduleType').value;
+  const isCustomWeekdays=scheduleType==='weekdays';
+  const forces24h=['24x24','24x24_weekdays','48x96'].includes(scheduleType);
+
+  $('#weekdaysGroup').classList.toggle('hidden',!isCustomWeekdays);
+
+  if(forces24h){
+    $('#asTurn').value='24h';
+    $('#asTurn').disabled=true;
+  }else{
+    $('#asTurn').disabled=false;
+  }
+}
+$('#asScheduleType').onchange=updateScheduleFields;
 $('#newAssignmentBtn').onclick=()=>editAssignment();
 window.editAssignment=id=>{
   fillAssignmentSelects();const x=assignments.find(a=>a.id===id);
   $('#assignmentId').value=x?.id||'';$('#asHouse').value=x?.house_id||$('#asHouse').value;$('#asCaregiver').value=x?.caregiver_id||$('#asCaregiver').value;
   $('#asScheduleType').value=x?.schedule_type||'12x36';$('#asTurn').value=x?.turn||'day';$('#asAmount').value=x?window.Masks.formatMoneyFromNumber(x.amount):'';
   $('#asStartDate').value=x?.start_date||todayISO();$('#asEndDate').value=x?.end_date||'';$('#asStatus').value=x?.status||'active';$('#asNotes').value=x?.notes||'';
-  setSelectedWeekdays(x?.weekdays||[]);$('#weekdaysGroup').classList.toggle('hidden',$('#asScheduleType').value!=='weekdays');
+  setSelectedWeekdays(x?.weekdays||[]);
+  updateScheduleFields();
   $('#deleteAssignmentBtn').style.display=id?'inline-block':'none';window.Masks.refresh();openModal('assignmentModal');
 };
 $('#assignmentForm').onsubmit=async e=>{
-  e.preventDefault();const id=$('#assignmentId').value,p={house_id:$('#asHouse').value,caregiver_id:$('#asCaregiver').value,schedule_type:$('#asScheduleType').value,turn:$('#asTurn').value,amount:moneyToNumber($('#asAmount').value),start_date:$('#asStartDate').value,end_date:$('#asEndDate').value||null,weekdays:selectedWeekdays(),status:$('#asStatus').value,notes:$('#asNotes').value.trim()||null,updated_at:new Date().toISOString()};
+  e.preventDefault();const id=$('#assignmentId').value,scheduleType=$('#asScheduleType').value,p={house_id:$('#asHouse').value,caregiver_id:$('#asCaregiver').value,schedule_type:scheduleType,turn:['24x24','24x24_weekdays','48x96'].includes(scheduleType)?'24h':$('#asTurn').value,amount:moneyToNumber($('#asAmount').value),start_date:$('#asStartDate').value,end_date:$('#asEndDate').value||null,weekdays:selectedWeekdays(),status:$('#asStatus').value,notes:$('#asNotes').value.trim()||null,updated_at:new Date().toISOString()};
   if(p.schedule_type==='weekdays'&&!p.weekdays.length)return alert('Selecione pelo menos um dia da semana.');
   const r=id?await db.from('caregiver_house_assignments').update(p).eq('id',id).select().single():await db.from('caregiver_house_assignments').insert({...p,created_by:user.id}).select().single();
   if(r.error)return alert(r.error.message);
@@ -315,12 +330,35 @@ function shouldGenerate(a,d){
   const endDay=a.end_date?calendarDayNumber(a.end_date):null;
 
   if(currentDay<startDay||(endDay!==null&&currentDay>endDay))return false;
+  const diff=currentDay-startDay;
+
   if(a.schedule_type==='daily')return true;
   if(a.schedule_type==='weekdays')return (a.weekdays||[]).includes(d.getDay());
+
+  // 12 horas de trabalho por 36 horas de descanso:
+  // um plantão a cada dois dias.
   if(a.schedule_type==='12x36'){
-    const diff=currentDay-startDay;
     return diff>=0&&diff%2===0;
   }
+
+  // 24 horas de trabalho por 24 horas de descanso:
+  // um plantão de 24h a cada dois dias.
+  if(a.schedule_type==='24x24'){
+    return diff>=0&&diff%2===0;
+  }
+
+  // Mantém a alternância 24x24, mas não gera plantões aos sábados e domingos.
+  if(a.schedule_type==='24x24_weekdays'){
+    const weekDay=d.getDay();
+    return diff>=0&&diff%2===0&&weekDay>=1&&weekDay<=5;
+  }
+
+  // Dois dias consecutivos de plantão de 24h e quatro dias de descanso.
+  if(a.schedule_type==='48x96'){
+    const position=diff%6;
+    return diff>=0&&(position===0||position===1);
+  }
+
   return false;
 }
 async function generateAssignmentShifts(a,month){
