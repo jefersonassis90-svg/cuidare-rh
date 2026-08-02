@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cuidare RH</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=20260802-14"></script>
+  <script src="config.js?v=20260802-15"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <style>
@@ -31,7 +31,7 @@
     .nav button.active,.nav button:hover{background:#24385f;color:#fff}.side-bottom{margin-top:26px;display:grid;gap:9px}
     .main{padding:26px}.topbar{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:20px}
     .topbar h2{margin:0}.muted{color:var(--muted)}.actions{display:flex;gap:9px;flex-wrap:wrap}
-    .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.card{background:var(--panel);border:1px solid var(--border);border-radius:17px;padding:17px;box-shadow:var(--shadow)}
+    .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:18px}.card{background:var(--panel);border:1px solid var(--border);border-radius:17px;padding:17px;box-shadow:var(--shadow)}
     .card .number{font-size:27px;font-weight:700;margin-top:6px}.view{display:none}.view.active{display:block}
     .toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
     .toolbar-group{display:flex;gap:9px;flex-wrap:wrap;align-items:center}.search{min-width:260px}
@@ -121,6 +121,7 @@
 
     <section id="dashboardView" class="view active">
       <div class="cards">
+        <div class="card"><div class="muted">Casas ativas</div><div id="dashHouses" class="number">0</div></div>
         <div class="card"><div class="muted">Cuidadores ativos</div><div id="dashCaregivers" class="number">0</div></div>
         <div class="card"><div class="muted">Cuidadores de suporte</div><div id="dashSupport" class="number">0</div></div>
         <div class="card"><div class="muted">Escalas fixas ativas</div><div id="dashAssignments" class="number">0</div></div>
@@ -392,7 +393,7 @@
   <div class="modal-actions"><button type="button" class="btn primary" data-close="calendarDetailModal">Fechar</button></div>
 </div></div>
 
-<script src="masks.js?v=20260802-14"></script>
-<script src="app.js?v=20260802-14"></script>
+<script src="masks.js?v=20260802-15"></script>
+<script src="app.js?v=20260802-15"></script>
 </body>
 </html>

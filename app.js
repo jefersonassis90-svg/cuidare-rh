@@ -44,6 +44,7 @@ $$('.nav button').forEach(b=>b.onclick=()=>setView(b.dataset.view));
 
 function render(){
   const month=monthNow(),monthSupports=shifts.filter(x=>x.shift_date.startsWith(month)&&x.shift_type==='support');
+  $('#dashHouses').textContent=houses.filter(x=>x.status==='active').length;
   $('#dashCaregivers').textContent=caregivers.filter(x=>x.status==='active').length;
   $('#dashSupport').textContent=caregivers.filter(x=>x.status==='active'&&['support','both'].includes(x.work_type)).length;
   $('#dashAssignments').textContent=assignments.filter(x=>x.status==='active').length;
