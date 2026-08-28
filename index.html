@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cuidare RH</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=20260827-17"></script>
+  <script src="config.js?v=20260827-18"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <style>
@@ -26,9 +26,16 @@
     .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}.btn.danger{color:var(--danger)}.btn.small{padding:7px 10px;font-size:13px}
     .app{display:grid;grid-template-columns:245px 1fr;min-height:100vh}.sidebar{background:#13213d;color:#fff;padding:22px 16px}
     .brand{display:flex;gap:10px;align-items:center;margin-bottom:26px}.brand .logo{width:42px;height:42px;margin:0;border-radius:13px}
-    .brand h1{font-size:18px;margin:0}.brand small{color:#a9bad6}.nav{display:grid;gap:7px}
-    .nav button{border:0;background:transparent;color:#c9d6eb;padding:12px;border-radius:10px;text-align:left;cursor:pointer}
-    .nav button.active,.nav button:hover{background:#24385f;color:#fff}.side-bottom{margin-top:26px;display:grid;gap:9px}
+    .brand h1{font-size:18px;margin:0}.brand small{color:#a9bad6}.nav{display:grid;gap:10px}
+    .nav-home,.nav-item,.nav-group-toggle{width:100%;border:0;background:transparent;color:#c9d6eb;border-radius:10px;text-align:left;cursor:pointer}
+    .nav-home,.nav-item{padding:11px 12px}.nav-home{font-weight:600}
+    .nav-home.active,.nav-item.active,.nav-home:hover,.nav-item:hover{background:#24385f;color:#fff}
+    .nav-group{display:grid;gap:4px}.nav-group-toggle{padding:9px 10px;display:flex;align-items:center;justify-content:space-between;color:#91a8cc;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+    .nav-group-toggle:hover{background:rgba(255,255,255,.05);color:#dce8fa}.nav-group-toggle .nav-arrow{font-size:11px;transition:transform .18s ease}
+    .nav-group.open .nav-group-toggle .nav-arrow{transform:rotate(90deg)}
+    .nav-group-items{display:none;gap:4px;padding-left:8px}.nav-group.open .nav-group-items{display:grid}
+    .nav-item{position:relative;padding-left:17px}.nav-item::before{content:'';position:absolute;left:5px;top:50%;width:4px;height:4px;border-radius:50%;background:#607aa6;transform:translateY(-50%)}
+    .nav-item.active::before{background:#93c5fd}.side-bottom{margin-top:26px;display:grid;gap:9px}
     .main{padding:26px}.topbar{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:20px}
     .topbar h2{margin:0}.muted{color:var(--muted)}.actions{display:flex;gap:9px;flex-wrap:wrap}
     .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.card{background:var(--panel);border:1px solid var(--border);border-radius:17px;padding:17px;box-shadow:var(--shadow)}
@@ -88,7 +95,7 @@
 
     @media(max-width:950px){.planner-toolbar{align-items:flex-start}.planner-filters{width:100%}.planner-filters .field{min-width:180px}}
 
-    @media(max-width:950px){.app{grid-template-columns:1fr}.sidebar{position:static}.nav{grid-template-columns:repeat(5,minmax(max-content,1fr));overflow:auto}.cards{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:950px){.app{grid-template-columns:1fr}.sidebar{position:static}.nav{grid-template-columns:1fr;overflow:visible}.nav-group-items{padding-left:4px}.cards{grid-template-columns:repeat(2,1fr)}}
     @media(max-width:650px){.main{padding:15px}.cards{grid-template-columns:1fr 1fr}.form-grid{grid-template-columns:1fr}.full{grid-column:auto}.summary-grid{grid-template-columns:1fr}.topbar{align-items:flex-start;flex-direction:column}}
   </style>
 </head>
@@ -111,13 +118,37 @@
   <aside class="sidebar">
     <div class="brand"><div class="logo">GO</div><div><h1>Cuidare Boa Viagem</h1><small>Gestão Operacional</small></div></div>
     <nav class="nav">
-      <button class="active" data-view="dashboard">Dashboard</button>
-      <button data-view="calendar">Calendário</button>
-      <button data-view="caregivers">Cuidadores</button>
-      <button data-view="houses">Casas e escalas</button>
-      <button data-view="supports">Ocorrências</button>
-      <button data-view="payments">Solicitar pagamento</button>
-      <button data-view="receipts">Recibos</button>
+      <button class="nav-home active" data-view="dashboard">🏠 Dashboard</button>
+
+      <div class="nav-group open" data-group="operation">
+        <button type="button" class="nav-group-toggle" aria-expanded="true">
+          <span>📅 Operação</span><span class="nav-arrow">▶</span>
+        </button>
+        <div class="nav-group-items">
+          <button class="nav-item" data-view="calendar">Calendário</button>
+          <button class="nav-item" data-view="supports">Ocorrências</button>
+        </div>
+      </div>
+
+      <div class="nav-group" data-group="registrations">
+        <button type="button" class="nav-group-toggle" aria-expanded="false">
+          <span>👥 Cadastros</span><span class="nav-arrow">▶</span>
+        </button>
+        <div class="nav-group-items">
+          <button class="nav-item" data-view="caregivers">Cuidadores</button>
+          <button class="nav-item" data-view="houses">Casas e escalas</button>
+        </div>
+      </div>
+
+      <div class="nav-group" data-group="finance">
+        <button type="button" class="nav-group-toggle" aria-expanded="false">
+          <span>💰 Financeiro</span><span class="nav-arrow">▶</span>
+        </button>
+        <div class="nav-group-items">
+          <button class="nav-item" data-view="payments">Solicitar pagamento</button>
+          <button class="nav-item" data-view="receipts">Recibos</button>
+        </div>
+      </div>
     </nav>
     <div class="side-bottom"><button id="logoutBtn" class="btn">Sair</button></div>
   </aside>
@@ -412,7 +443,7 @@
   </form>
 </div></div>
 
-<script src="masks.js?v=20260827-17"></script>
-<script src="app.js?v=20260827-17"></script>
+<script src="masks.js?v=20260827-18"></script>
+<script src="app.js?v=20260827-18"></script>
 </body>
 </html>

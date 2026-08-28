@@ -35,13 +35,39 @@ async function loadAll(){
   sync('Sincronizado');render();
 }
 
-function setView(v){
-  view=v;$$('.view').forEach(x=>x.classList.remove('active'));$('#'+v+'View').classList.add('active');
-  $$('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.view===v));
-  $('#pageTitle').textContent={dashboard:'Dashboard',calendar:'Calendário de escalas',caregivers:'Cuidadores',houses:'Casas e escalas',supports:'Ocorrências',payments:'Solicitar pagamento',receipts:'Recibos'}[v];
-render();
+const viewGroup={calendar:'operation',supports:'operation',caregivers:'registrations',houses:'registrations',payments:'finance',receipts:'finance'};
+
+function setNavGroup(groupName,open){
+  const group=document.querySelector(`.nav-group[data-group="${groupName}"]`);
+  if(!group)return;
+  group.classList.toggle('open',open);
+  group.querySelector('.nav-group-toggle')?.setAttribute('aria-expanded',String(open));
 }
-$$('.nav button').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+
+function openActiveNavGroup(v){
+  const groupName=viewGroup[v];
+  if(groupName)setNavGroup(groupName,true);
+}
+
+function setView(v){
+  if(!v)return;
+  view=v;
+  $$('.view').forEach(x=>x.classList.remove('active'));
+  $('#'+v+'View').classList.add('active');
+  $$('.nav [data-view]').forEach(x=>x.classList.toggle('active',x.dataset.view===v));
+  openActiveNavGroup(v);
+  $('#pageTitle').textContent={dashboard:'Dashboard',calendar:'Calendário de escalas',caregivers:'Cuidadores',houses:'Casas e escalas',supports:'Ocorrências',payments:'Solicitar pagamento',receipts:'Recibos'}[v];
+  render();
+}
+
+$$('.nav [data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+$$('.nav-group-toggle').forEach(toggle=>{
+  toggle.onclick=()=>{
+    const group=toggle.closest('.nav-group');
+    const willOpen=!group.classList.contains('open');
+    setNavGroup(group.dataset.group,willOpen);
+  };
+});
 
 function calculateProjectedPayroll(month){
   return shifts
