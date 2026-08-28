@@ -773,10 +773,49 @@ function renderPaymentRequests(){
   }).join(''):'<tr><td colspan="8" class="empty">Nenhuma solicitação no período.</td></tr>';
 }
 async function sendPaymentRequestWhatsApp(id,showSuccess=false){
-  const {data,error}=await db.functions.invoke('send-payment-request',{body:{request_id:id}});
-  if(error)throw error;
-  if(data?.error)throw new Error(data.error);
-  if(showSuccess)alert('Mensagem enviada ao grupo do Financeiro.');
+  const request=paymentRequests.find(x=>x.id===id) || (await db.from('payment_requests').select('*').eq('id',id).single()).data;
+  if(!request)throw new Error('Solicitação não encontrada.');
+
+  const caregiver=caregivers.find(x=>x.id===request.caregiver_id) || (await db.from('caregivers').select('*').eq('id',request.caregiver_id).single()).data;
+  if(!caregiver)throw new Error('Cuidador não encontrado.');
+
+  const body={
+    caregiver_name:caregiver.name,
+    cpf:caregiver.cpf||'',
+    bank_name:caregiver.bank||'',
+    pix_type:pixTypeLabel(caregiver.pix_type),
+    pix_key:caregiver.pix_key||'',
+    payment_type:paymentRequestTypeLabel(request.request_type),
+    amount:Number(request.amount||0),
+    notes:request.notes||'',
+    requested_at:`${request.request_date}T12:00:00-03:00`
+  };
+
+  try{
+    const {data,error}=await db.functions.invoke('send-payment-request',{body});
+    if(error)throw error;
+    if(data?.success===false||data?.error)throw new Error(data?.error||'Falha no envio ao WhatsApp.');
+
+    const messageId=data?.waha?.id||data?.message_id||null;
+    const update=await db.from('payment_requests').update({
+      whatsapp_status:'sent',
+      whatsapp_sent_at:new Date().toISOString(),
+      whatsapp_error:null,
+      whatsapp_message_id:messageId,
+      updated_at:new Date().toISOString()
+    }).eq('id',id);
+    if(update.error)console.warn('Mensagem enviada, mas não foi possível atualizar o status:',update.error.message);
+
+    if(showSuccess)alert('Mensagem enviada ao grupo do Financeiro.');
+    return data;
+  }catch(error){
+    await db.from('payment_requests').update({
+      whatsapp_status:'error',
+      whatsapp_error:String(error?.message||error).slice(0,1000),
+      updated_at:new Date().toISOString()
+    }).eq('id',id);
+    throw error;
+  }
 }
 window.resendPaymentRequest=async id=>{
   try{
