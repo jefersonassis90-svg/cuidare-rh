@@ -1,7 +1,7 @@
 const cfg=window.APP_CONFIG||{};
 const db=window.supabase.createClient(cfg.SUPABASE_URL||'',cfg.SUPABASE_PUBLISHABLE_KEY||'');
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
-let user=null,caregivers=[],houses=[],assignments=[],shifts=[],advances=[],receiptRecords=[],view='dashboard';
+let user=null,caregivers=[],houses=[],assignments=[],shifts=[],paymentRequests=[],receiptRecords=[],view='dashboard';
 
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const moneyToNumber=v=>window.Masks?.moneyToNumber(v)||Number(v||0);
@@ -27,18 +27,18 @@ async function loadAll(){
     db.from('houses').select('*').order('name'),
     db.from('caregiver_house_assignments').select('*').order('created_at'),
     db.from('shifts').select('*').order('shift_date',{ascending:false}),
-    db.from('caregiver_advances').select('*').order('advance_date',{ascending:false}),
+    db.from('payment_requests').select('*').order('request_date',{ascending:false}),
     db.from('caregiver_receipts').select('*').order('issued_at',{ascending:false})
   ]);
   for(const r of [cg,hs,as,sh,ad,rr])if(r.error){sync('Erro');alert(r.error.message);return}
-  caregivers=cg.data||[];houses=hs.data||[];assignments=as.data||[];shifts=sh.data||[];advances=ad.data||[];receiptRecords=rr.data||[];
+  caregivers=cg.data||[];houses=hs.data||[];assignments=as.data||[];shifts=sh.data||[];paymentRequests=ad.data||[];receiptRecords=rr.data||[];
   sync('Sincronizado');render();
 }
 
 function setView(v){
   view=v;$$('.view').forEach(x=>x.classList.remove('active'));$('#'+v+'View').classList.add('active');
   $$('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.view===v));
-  $('#pageTitle').textContent={dashboard:'Dashboard',calendar:'Calendário de escalas',caregivers:'Cuidadores',houses:'Casas e escalas',supports:'Ocorrências',advances:'Adiantamentos',receipts:'Recibos'}[v];
+  $('#pageTitle').textContent={dashboard:'Dashboard',calendar:'Calendário de escalas',caregivers:'Cuidadores',houses:'Casas e escalas',supports:'Ocorrências',payments:'Solicitar pagamento',receipts:'Recibos'}[v];
 render();
 }
 $$('.nav button').forEach(b=>b.onclick=()=>setView(b.dataset.view));
@@ -58,8 +58,8 @@ function render(){
   const monthShifts=shifts.filter(x=>x.shift_date.startsWith(month));
   const todays=shifts.filter(x=>x.shift_date===today);
   const monthOccurrences=monthShifts.filter(x=>['support','swap'].includes(x.shift_type)||x.status==='absence');
-  const monthAdvances=advances
-    .filter(x=>x.competence===month)
+  const monthAdvances=paymentRequests
+    .filter(x=>x.request_type==='advance'&&x.competence===month)
     .reduce((total,x)=>total+Number(x.amount||0),0);
 
   const receiptRows=calculateClosing(month);
@@ -97,7 +97,7 @@ function render(){
   renderHouses();
   renderAssignments();
   renderSupports();
-  renderAdvances();
+  renderPaymentRequests();
   renderReceipts();
 }
 
@@ -257,12 +257,12 @@ $('#newCaregiverBtn').onclick=()=>editCaregiver();
 window.editCaregiver=id=>{
   const x=caregivers.find(a=>a.id===id);
   $('#caregiverId').value=x?.id||'';$('#cgName').value=x?.name||'';$('#cgCpf').value=x?.cpf||'';$('#cgPhone').value=x?.phone||'';
-  $('#cgType').value=x?.work_type||'fixed';$('#cgRole').value=x?.role||'';$('#cgPixType').value=x?.pix_type||'cpf';$('#cgPix').value=x?.pix_key||'';
+  $('#cgType').value=x?.work_type||'fixed';$('#cgRole').value=x?.role||'';$('#cgPixType').value=x?.pix_type||'cpf';$('#cgPix').value=x?.pix_key||'';$('#cgBank').value=x?.bank||'';
   $('#cgMei').value=String(x?.has_mei||false);$('#cgCnpj').value=x?.cnpj||'';$('#cgStatus').value=x?.status||'active';$('#cgNotes').value=x?.notes||'';
   $('#deleteCaregiverBtn').style.display=id?'inline-block':'none';window.Masks.refresh();openModal('caregiverModal');
 };
 $('#caregiverForm').onsubmit=async e=>{
-  e.preventDefault();const id=$('#caregiverId').value,p={name:$('#cgName').value.trim(),cpf:$('#cgCpf').value.trim()||null,phone:$('#cgPhone').value.trim()||null,work_type:$('#cgType').value,role:$('#cgRole').value.trim()||null,pix_type:$('#cgPixType').value,pix_key:$('#cgPix').value.trim()||null,has_mei:$('#cgMei').value==='true',cnpj:$('#cgCnpj').value.trim()||null,status:$('#cgStatus').value,notes:$('#cgNotes').value.trim()||null,updated_at:new Date().toISOString()};
+  e.preventDefault();const id=$('#caregiverId').value,p={name:$('#cgName').value.trim(),cpf:$('#cgCpf').value.trim()||null,phone:$('#cgPhone').value.trim()||null,work_type:$('#cgType').value,role:$('#cgRole').value.trim()||null,pix_type:$('#cgPixType').value,pix_key:$('#cgPix').value.trim()||null,bank:$('#cgBank').value.trim()||null,has_mei:$('#cgMei').value==='true',cnpj:$('#cgCnpj').value.trim()||null,status:$('#cgStatus').value,notes:$('#cgNotes').value.trim()||null,updated_at:new Date().toISOString()};
   const r=id?await db.from('caregivers').update(p).eq('id',id):await db.from('caregivers').insert({...p,created_by:user.id});
   if(r.error)return alert(r.error.message);closeModal('caregiverModal');loadAll();
 };
@@ -705,103 +705,160 @@ window.undoSwap=async groupId=>{
 };
 
 const ADVANCE_MONTHLY_REFERENCE=200;
-const paymentMethodLabel=v=>({pix:'PIX',transfer:'Transferência Bancária',cash:'Dinheiro'}[v]||v);
-function caregiverAdvances(caregiverId,month,excludeId=null){
-  return advances.filter(x=>x.caregiver_id===caregiverId&&x.competence===month&&x.id!==excludeId);
+const paymentRequestTypeLabel=v=>({advance:'Adiantamento',reimbursement:'Reembolso',termination:'Desligamento',support:'Suporte'}[v]||v);
+const pixTypeLabel=v=>({cpf:'CPF',cnpj:'CNPJ',phone:'Telefone',email:'E-mail',random:'Chave aleatória'}[v]||v||'Não informado');
+
+function caregiverAdvanceRequests(caregiverId,month,excludeId=null){
+  return paymentRequests.filter(x=>x.request_type==='advance'&&x.caregiver_id===caregiverId&&x.competence===month&&x.id!==excludeId);
 }
 function totalAdvances(caregiverId,month,excludeId=null){
-  return caregiverAdvances(caregiverId,month,excludeId).reduce((sum,x)=>sum+Number(x.amount||0),0);
+  return caregiverAdvanceRequests(caregiverId,month,excludeId).reduce((sum,x)=>sum+Number(x.amount||0),0);
 }
-
-
-function fillAdvanceCaregivers(){
-  $('#adCaregiver').innerHTML=caregivers.filter(x=>x.status==='active').map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+function fillPaymentRequestCaregivers(){
+  $('#prCaregiver').innerHTML=caregivers.filter(x=>x.status==='active').map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
 }
-function updateAdvanceLimitInfo(){
-  const caregiverId=$('#adCaregiver').value;
-  const month=$('#adCompetence').value;
-  const id=$('#advanceId').value||null;
-  const currentTotal=caregiverId&&month?totalAdvances(caregiverId,month,id):0;
-  const newValue=moneyToNumber($('#adAmount').value);
-  const projected=currentTotal+newValue;
-  $('#adMonthTotal').value=money(currentTotal);
-
-  const warning=$('#advanceLimitWarning');
+function updatePaymentCaregiverInfo(){
+  const caregiver=caregivers.find(x=>x.id===$('#prCaregiver').value);
+  $('#prBank').value=caregiver?.bank||'Não informado';
+  $('#prPixType').value=pixTypeLabel(caregiver?.pix_type);
+  $('#prPixKey').value=caregiver?.pix_key||'Não informado';
+}
+function updatePaymentTypeFields(){
+  const isAdvance=$('#prType').value==='advance';
+  $('#prCompetenceGroup').classList.toggle('hidden',!isAdvance);
+  $('#prCompetence').required=isAdvance;
+  if(isAdvance&&!$('#prCompetence').value)$('#prCompetence').value=($('#prDate').value||todayISO()).slice(0,7);
+  updatePaymentAdvanceLimit();
+}
+function updatePaymentAdvanceLimit(){
+  const warning=$('#paymentAdvanceLimitWarning');
+  if($('#prType').value!=='advance'){
+    warning.classList.add('hidden');warning.textContent='';return;
+  }
+  const caregiverId=$('#prCaregiver').value;
+  const competence=$('#prCompetence').value;
+  const value=moneyToNumber($('#prAmount').value);
+  const current=caregiverId&&competence?totalAdvances(caregiverId,competence):0;
+  const projected=current+value;
   if(projected>ADVANCE_MONTHLY_REFERENCE){
     warning.classList.remove('hidden');
-    warning.innerHTML=`⚠ O total após este lançamento será <strong>${money(projected)}</strong>, acima do limite mensal recomendado de <strong>${money(ADVANCE_MONTHLY_REFERENCE)}</strong>. O lançamento continuará permitido.`;
+    warning.innerHTML=`⚠ O total de adiantamentos nesta competência ficará em <strong>${money(projected)}</strong>, acima do limite mensal recomendado de <strong>${money(ADVANCE_MONTHLY_REFERENCE)}</strong>. A solicitação continua permitida.`;
   }else{
-    warning.classList.add('hidden');
-    warning.textContent='';
+    warning.classList.add('hidden');warning.textContent='';
   }
 }
-function renderAdvances(){
-  const month=$('#advanceMonth').value||monthNow();
-  const list=advances.filter(x=>x.competence===month);
-  $('#advancesBody').innerHTML=list.length?list.map(x=>`<tr>
-    <td>${dateBR(x.advance_date)}</td>
-    <td>${caregiverName(x.caregiver_id)}</td>
-    <td>${x.competence}</td>
-    <td><strong>${money(x.amount)}</strong></td>
-    <td>${paymentMethodLabel(x.payment_method)}</td>
-    <td>${x.notes||''}</td>
-    <td><button class="btn small" onclick="editAdvance('${x.id}')">Editar</button></td>
-  </tr>`).join(''):'<tr><td colspan="7" class="empty">Nenhum adiantamento nesta competência.</td></tr>';
+function whatsappStatusBadge(status){
+  if(status==='sent')return badge('Enviado','ok');
+  if(status==='error')return badge('Falhou','danger');
+  return badge('Pendente','warn');
 }
-$('#advanceMonth').value=monthNow();
-$('#advanceMonth').onchange=renderAdvances;
-$('#newAdvanceBtn').onclick=()=>editAdvance();
-window.editAdvance=id=>{
-  fillAdvanceCaregivers();
-  const x=advances.find(a=>a.id===id);
-  $('#advanceId').value=x?.id||'';
-  $('#adCaregiver').value=x?.caregiver_id||$('#adCaregiver').value;
-  $('#adDate').value=x?.advance_date||todayISO();
-  $('#adCompetence').value=x?.competence||($('#advanceMonth').value||monthNow());
-  $('#adAmount').value=x?window.Masks.formatMoneyFromNumber(x.amount):'';
-  $('#adPaymentMethod').value=x?.payment_method||'pix';
-  $('#adNotes').value=x?.notes||'';
-  $('#deleteAdvanceBtn').style.display=id?'inline-block':'none';
-  window.Masks.refresh();
-  updateAdvanceLimitInfo();
-  openModal('advanceModal');
+function renderPaymentRequests(){
+  const month=$('#paymentRequestMonth').value||monthNow();
+  const type=$('#paymentRequestTypeFilter').value||'';
+  const list=paymentRequests.filter(x=>x.request_date.startsWith(month)&&(!type||x.request_type===type));
+  $('#paymentRequestsBody').innerHTML=list.length?list.map(x=>{
+    const caregiver=caregivers.find(c=>c.id===x.caregiver_id);
+    const bank=caregiver?.bank||'Não informado';
+    const pix=caregiver?.pix_key||'Não informado';
+    return `<tr>
+      <td>${dateBR(x.request_date)}</td>
+      <td>${caregiverName(x.caregiver_id)}</td>
+      <td>${badge(paymentRequestTypeLabel(x.request_type),x.request_type==='advance'?'warn':'')}</td>
+      <td><strong>${bank}</strong><br><small class="muted">${pixTypeLabel(caregiver?.pix_type)}: ${pix}</small></td>
+      <td><strong>${money(x.amount)}</strong>${x.request_type==='advance'?`<br><small class="muted">Desconto: ${x.competence}</small>`:''}</td>
+      <td>${whatsappStatusBadge(x.whatsapp_status)}${x.whatsapp_error?`<br><small class="muted" title="${x.whatsapp_error}">${x.whatsapp_error}</small>`:''}</td>
+      <td>${x.notes||''}</td>
+      <td><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small" onclick="resendPaymentRequest('${x.id}')">Reenviar</button><button class="btn small danger" onclick="deletePaymentRequest('${x.id}')">Excluir</button></div></td>
+    </tr>`;
+  }).join(''):'<tr><td colspan="8" class="empty">Nenhuma solicitação no período.</td></tr>';
+}
+async function sendPaymentRequestWhatsApp(id,showSuccess=false){
+  const {data,error}=await db.functions.invoke('send-payment-request',{body:{request_id:id}});
+  if(error)throw error;
+  if(data?.error)throw new Error(data.error);
+  if(showSuccess)alert('Mensagem enviada ao grupo do Financeiro.');
+}
+window.resendPaymentRequest=async id=>{
+  try{
+    sync('Enviando WhatsApp...');
+    await sendPaymentRequestWhatsApp(id,true);
+  }catch(error){
+    alert('Não foi possível enviar a mensagem: '+error.message);
+  }finally{
+    await loadAll();
+  }
 };
-['adCaregiver','adCompetence','adAmount'].forEach(id=>$('#'+id).addEventListener('input',updateAdvanceLimitInfo));
-$('#advanceForm').onsubmit=async e=>{
-  e.preventDefault();
-  const id=$('#advanceId').value;
-  const p={
-    caregiver_id:$('#adCaregiver').value,
-    advance_date:$('#adDate').value,
-    competence:$('#adCompetence').value,
-    amount:moneyToNumber($('#adAmount').value),
-    payment_method:$('#adPaymentMethod').value,
-    notes:$('#adNotes').value.trim()||null,
-    updated_at:new Date().toISOString()
-  };
-  if(p.amount<=0)return alert('Informe um valor de adiantamento maior que zero.');
-  const projected=totalAdvances(p.caregiver_id,p.competence,id||null)+p.amount;
-  if(projected>ADVANCE_MONTHLY_REFERENCE){
-    const ok=confirm(`O total de adiantamentos ficará em ${money(projected)}, acima do limite recomendado de ${money(ADVANCE_MONTHLY_REFERENCE)}. Deseja salvar mesmo assim?`);
-    if(!ok)return;
-  }
-  const r=id
-    ?await db.from('caregiver_advances').update(p).eq('id',id)
-    :await db.from('caregiver_advances').insert({...p,created_by:user.id});
-  if(r.error)return alert(r.error.message);
-  closeModal('advanceModal');
+window.deletePaymentRequest=async id=>{
+  const request=paymentRequests.find(x=>x.id===id);
+  const text=request?.request_type==='advance'
+    ?'Excluir esta solicitação? O adiantamento deixará de ser descontado do recibo.'
+    :'Excluir esta solicitação de pagamento?';
+  if(!confirm(text))return;
+  const result=await db.from('payment_requests').delete().eq('id',id);
+  if(result.error)return alert(result.error.message);
   loadAll();
 };
-$('#deleteAdvanceBtn').onclick=async()=>{
-  const id=$('#advanceId').value;
-  if(id&&confirm('Excluir este adiantamento?')){
-    const r=await db.from('caregiver_advances').delete().eq('id',id);
-    if(r.error)return alert(r.error.message);
-    closeModal('advanceModal');
-    loadAll();
-  }
+$('#paymentRequestMonth').value=monthNow();
+$('#paymentRequestMonth').onchange=renderPaymentRequests;
+$('#paymentRequestTypeFilter').onchange=renderPaymentRequests;
+$('#newPaymentRequestBtn').onclick=()=>{
+  fillPaymentRequestCaregivers();
+  $('#prDate').value=todayISO();
+  $('#prType').value='advance';
+  $('#prCompetence').value=monthNow();
+  $('#prAmount').value='';
+  $('#prNotes').value='';
+  updatePaymentCaregiverInfo();
+  updatePaymentTypeFields();
+  window.Masks.refresh();
+  openModal('paymentRequestModal');
 };
+$('#prCaregiver').onchange=()=>{updatePaymentCaregiverInfo();updatePaymentAdvanceLimit()};
+$('#prType').onchange=updatePaymentTypeFields;
+$('#prDate').onchange=()=>{if($('#prType').value==='advance')$('#prCompetence').value=$('#prDate').value.slice(0,7);updatePaymentAdvanceLimit()};
+$('#prCompetence').onchange=updatePaymentAdvanceLimit;
+$('#prAmount').addEventListener('input',updatePaymentAdvanceLimit);
+$('#paymentRequestForm').onsubmit=async e=>{
+  e.preventDefault();
+  const requestType=$('#prType').value;
+  const caregiverId=$('#prCaregiver').value;
+  const competence=requestType==='advance'?$('#prCompetence').value:null;
+  const amount=moneyToNumber($('#prAmount').value);
+  if(amount<=0)return alert('Informe um valor maior que zero.');
+  if(requestType==='advance'&&!competence)return alert('Informe a competência do adiantamento.');
 
+  if(requestType==='advance'){
+    const projected=totalAdvances(caregiverId,competence)+amount;
+    if(projected>ADVANCE_MONTHLY_REFERENCE){
+      const ok=confirm(`O total de adiantamentos ficará em ${money(projected)}, acima do limite recomendado de ${money(ADVANCE_MONTHLY_REFERENCE)}. Deseja solicitar mesmo assim?`);
+      if(!ok)return;
+    }
+  }
+
+  const payload={
+    caregiver_id:caregiverId,
+    request_type:requestType,
+    request_date:$('#prDate').value,
+    competence,
+    amount,
+    notes:$('#prNotes').value.trim()||null,
+    whatsapp_status:'pending',
+    created_by:user.id,
+    updated_at:new Date().toISOString()
+  };
+
+  const {data,error}=await db.from('payment_requests').insert(payload).select().single();
+  if(error)return alert(error.message);
+  closeModal('paymentRequestModal');
+
+  try{
+    await sendPaymentRequestWhatsApp(data.id);
+    alert('Solicitação registrada e enviada ao grupo do Financeiro.');
+  }catch(error){
+    alert('Solicitação registrada, mas o WhatsApp não foi enviado. Você poderá reenviar pela tela.\n\n'+error.message);
+  }
+  loadAll();
+};
 
 function calculateClosing(month){
   const today=todayISO(),list=shifts.filter(x=>x.shift_date.startsWith(month)&&x.shift_date<=today&&!['cancelled','absence'].includes(x.status));

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cuidare RH</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=20260802-16"></script>
+  <script src="config.js?v=20260827-17"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <style>
@@ -116,7 +116,7 @@
       <button data-view="caregivers">Cuidadores</button>
       <button data-view="houses">Casas e escalas</button>
       <button data-view="supports">Ocorrências</button>
-      <button data-view="advances">Adiantamentos</button>
+      <button data-view="payments">Solicitar pagamento</button>
       <button data-view="receipts">Recibos</button>
     </nav>
     <div class="side-bottom"><button id="logoutBtn" class="btn">Sair</button></div>
@@ -232,34 +232,29 @@
       <div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Data</th><th>Casa</th><th>Previsto</th><th>Realizado</th><th>Turno</th><th>Valor</th><th>Motivo</th><th></th></tr></thead><tbody id="supportsBody"></tbody></table></div>
     </section>
 
-
-    <section id="advancesView" class="view">
+    <section id="paymentsView" class="view">
       <div class="toolbar">
         <div class="toolbar-group">
-          <input id="advanceMonth" class="field" type="month" style="max-width:190px">
-          <span class="muted">Limite mensal recomendado: <strong>R$ 200,00</strong></span>
+          <input id="paymentRequestMonth" class="field" type="month" style="max-width:190px">
+          <select id="paymentRequestTypeFilter" class="field" style="max-width:220px">
+            <option value="">Todos os tipos</option>
+            <option value="advance">Adiantamento</option>
+            <option value="reimbursement">Reembolso</option>
+            <option value="termination">Desligamento</option>
+            <option value="support">Suporte</option>
+          </select>
         </div>
-        <button id="newAdvanceBtn" class="btn primary">+ Novo adiantamento</button>
+        <button id="newPaymentRequestBtn" class="btn primary">+ Solicitar pagamento</button>
       </div>
 
       <div class="info-box" style="margin-bottom:14px">
-        O limite de R$ 200,00 é apenas informativo. Valores acima desse limite serão permitidos, mas o sistema exibirá um aviso.
+        Solicitações do tipo <strong>Adiantamento</strong> são descontadas automaticamente do recibo na competência informada. O limite mensal recomendado é de <strong>R$ 200,00</strong>, sem bloqueio. Ao excluir a solicitação, o desconto também é cancelado.
       </div>
 
       <div class="table-wrap">
         <table>
-          <thead>
-            <tr>
-              <th>Data</th>
-              <th>Cuidador</th>
-              <th>Competência</th>
-              <th>Valor</th>
-              <th>Forma de pagamento</th>
-              <th>Observação</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="advancesBody"></tbody>
+          <thead><tr><th>Data</th><th>Cuidador</th><th>Tipo</th><th>Banco / PIX</th><th>Valor</th><th>WhatsApp</th><th>Observação</th><th></th></tr></thead>
+          <tbody id="paymentRequestsBody"></tbody>
         </table>
       </div>
     </section>
@@ -301,6 +296,7 @@
     <div class="form-group"><label>Função</label><input id="cgRole" class="field" placeholder="Cuidador, técnico..."></div>
     <div class="form-group"><label>Tipo da chave PIX</label><select id="cgPixType" class="field"><option value="cpf">CPF</option><option value="cnpj">CNPJ</option><option value="phone">Telefone</option><option value="email">E-mail</option><option value="random">Chave aleatória</option></select></div>
     <div class="form-group"><label>Chave PIX</label><input id="cgPix" class="field"></div>
+    <div class="form-group"><label>Banco</label><input id="cgBank" class="field" placeholder="Ex.: Nubank, Itaú, Caixa..."></div>
     <div class="form-group"><label>Possui MEI?</label><select id="cgMei" class="field"><option value="false">Não</option><option value="true">Sim</option></select></div>
     <div class="form-group"><label>CNPJ</label><input id="cgCnpj" class="field" maxlength="18" inputmode="numeric" placeholder="00.000.000/0000-00"></div>
     <div class="form-group"><label>Status</label><select id="cgStatus" class="field"><option value="active">Ativo</option><option value="away">Afastado</option><option value="inactive">Inativo</option></select></div>
@@ -389,43 +385,34 @@
 </div></div>
 
 
-<!-- ADIANTAMENTO -->
-<div id="advanceModal" class="modal"><div class="modal-card">
-  <div class="modal-head"><h3>Adiantamento</h3><button class="btn" data-close="advanceModal">✕</button></div>
-  <form id="advanceForm">
-    <input id="advanceId" type="hidden">
+<!-- SOLICITAÇÃO DE PAGAMENTO -->
+<div id="paymentRequestModal" class="modal"><div class="modal-card">
+  <div class="modal-head"><h3>Solicitar pagamento</h3><button class="btn" data-close="paymentRequestModal">✕</button></div>
+  <form id="paymentRequestForm">
     <div class="form-grid">
-      <div class="form-group"><label>Cuidador</label><select id="adCaregiver" class="field" required></select></div>
-      <div class="form-group"><label>Data do adiantamento</label><input id="adDate" class="field" type="date" required></div>
-      <div class="form-group"><label>Competência do desconto</label><input id="adCompetence" class="field" type="month" required></div>
-      <div class="form-group"><label>Valor</label><input id="adAmount" class="field" inputmode="numeric" placeholder="R$ 0,00" required></div>
-      <div class="form-group"><label>Forma de pagamento</label>
-        <select id="adPaymentMethod" class="field">
-          <option value="pix">PIX</option>
-          <option value="transfer">Transferência Bancária</option>
-          <option value="cash">Dinheiro</option>
+      <div class="form-group full"><label>Cuidador</label><select id="prCaregiver" class="field" required></select></div>
+      <div class="form-group"><label>Banco</label><input id="prBank" class="field" readonly></div>
+      <div class="form-group"><label>Tipo da chave PIX</label><input id="prPixType" class="field" readonly></div>
+      <div class="form-group full"><label>Chave PIX</label><input id="prPixKey" class="field" readonly></div>
+      <div class="form-group"><label>Tipo de pagamento</label>
+        <select id="prType" class="field" required>
+          <option value="advance">Adiantamento</option>
+          <option value="reimbursement">Reembolso</option>
+          <option value="termination">Desligamento</option>
+          <option value="support">Suporte</option>
         </select>
       </div>
-      <div class="form-group"><label>Total já lançado na competência</label><input id="adMonthTotal" class="field" readonly></div>
-      <div class="form-group full"><label>Observações</label><textarea id="adNotes" class="field"></textarea></div>
-      <div id="advanceLimitWarning" class="info-box full hidden" style="border-color:#f59e0b;background:#fffbeb;color:#92400e"></div>
+      <div class="form-group"><label>Data da solicitação</label><input id="prDate" class="field" type="date" required></div>
+      <div id="prCompetenceGroup" class="form-group"><label>Competência do desconto</label><input id="prCompetence" class="field" type="month"></div>
+      <div class="form-group"><label>Valor</label><input id="prAmount" class="field" inputmode="numeric" placeholder="R$ 0,00" required></div>
+      <div id="paymentAdvanceLimitWarning" class="info-box full hidden" style="border-color:#f59e0b;background:#fffbeb;color:#92400e"></div>
+      <div class="form-group full"><label>Observação</label><textarea id="prNotes" class="field" placeholder="Informe os detalhes para o Financeiro"></textarea></div>
     </div>
-    <div class="modal-actions">
-      <button type="button" id="deleteAdvanceBtn" class="btn danger">Excluir</button>
-      <button class="btn primary">Salvar adiantamento</button>
-    </div>
+    <div class="modal-actions"><button class="btn primary">Solicitar pagamento</button></div>
   </form>
 </div></div>
 
-
-<!-- DETALHES DO PLANTÃO -->
-<div id="calendarDetailModal" class="modal"><div class="modal-card" style="width:min(620px,100%)">
-  <div class="modal-head"><h3>Detalhes do plantão</h3><button class="btn" data-close="calendarDetailModal">✕</button></div>
-  <div id="calendarDetailContent" class="detail-list"></div>
-  <div class="modal-actions"><button type="button" class="btn primary" data-close="calendarDetailModal">Fechar</button></div>
-</div></div>
-
-<script src="masks.js?v=20260802-16"></script>
-<script src="app.js?v=20260802-16"></script>
+<script src="masks.js?v=20260827-17"></script>
+<script src="app.js?v=20260827-17"></script>
 </body>
 </html>
